@@ -9,13 +9,13 @@ import {
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyBVBYXhGZ_KchTWS8KxK0nUaKbI42G5Ic0",
-  authDomain: "taptag-c05f0.firebaseapp.com",
-  projectId: "taptag-c05f0",
-  storageBucket: "taptag-c05f0.firebasestorage.app",
-  messagingSenderId: "674855826456",
-  appId: "1:674855826456:web:20d090e02ff0c70cdfff6d",
-  measurementId: "G-SFDC8PP4MR",
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 const app = initializeApp(firebaseConfig);
