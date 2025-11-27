@@ -1,4 +1,5 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { useAuthRedirect } from "@/hooks/useAuthRedirect";
 import {
   DarkTheme,
   DefaultTheme,
@@ -11,6 +12,7 @@ import "../src/config/firebase";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  useAuthRedirect();
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
