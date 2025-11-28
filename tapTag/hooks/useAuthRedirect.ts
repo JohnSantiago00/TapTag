@@ -11,7 +11,7 @@ export function useAuthRedirect() {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       const inAuthGroup = segments[0] === "(auth)";
       if (user && inAuthGroup) {
-        router.replace("/(tabs)");
+        router.replace("/(tabs)/Home");
       } else if (!user && !inAuthGroup) {
         router.replace("/(auth)/Login");
       }
