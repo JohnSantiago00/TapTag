@@ -2,6 +2,7 @@ import { useRouter } from "expo-router";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   TextInput,
@@ -9,29 +10,52 @@ import {
   View,
 } from "react-native";
 import { auth } from "../../src/config/firebase";
+import { validateEmail, validatePassword } from "../../src/utils/validation";
 
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    setStatus("Logging in...");
+    if (!validateEmail(email)) return setStatus("Please enter a valid email.");
+    if (!validatePassword(password))
+      return setStatus("Password must be at least 6 characters.");
+
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      setStatus("Login Successful!");
+      setLoading(true);
+      setStatus("Logging in...");
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      setStatus("Login successful!");
       router.replace("/(tabs)");
     } catch (error: any) {
       console.error(error);
-      setStatus(`Error: ${error.message}`);
+      setStatus(getFirebaseErrorMessage(error.code));
+    } finally {
+      setLoading(false);
     }
   };
+
+  const getFirebaseErrorMessage = (code: string): string => {
+    switch (code) {
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        return "Incorrect email or password.";
+      case "auth/user-not-found":
+        return "No account found with that email.";
+      case "auth/too-many-requests":
+        return "Too many attempts. Try again later.";
+      default:
+        return "Something went wrong. Please try again.";
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome Back</Text>
 
-      {/* Email Input */}
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -39,9 +63,9 @@ export default function Login() {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        keyboardType="email-address"
       />
 
-      {/* Password Input */}
       <TextInput
         style={styles.input}
         placeholder="Password"
@@ -51,14 +75,22 @@ export default function Login() {
         secureTextEntry
       />
 
-      <TouchableOpacity style={styles.button} onPress={handleLogin}>
-        <Text style={styles.buttonText}>Login</Text>
+      <TouchableOpacity
+        style={[styles.button, loading && { opacity: 0.6 }]}
+        onPress={handleLogin}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Login</Text>
+        )}
       </TouchableOpacity>
 
-      <Text style={styles.status}>{status}</Text>
+      {status ? <Text style={styles.status}>{status}</Text> : null}
 
       <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
-        <Text>Don't have an account? Sign Up</Text>
+        <Text style={styles.switchText}>Don't have an account? Sign Up</Text>
       </TouchableOpacity>
     </View>
   );
@@ -94,6 +126,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  switchText: { color: "0af", marginTop: 15 },
+  switchText: { color: "#0af", marginTop: 15 },
   status: { color: "#fff", marginTop: 15 },
 });
