@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -10,40 +9,27 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth, db } from "../../src/config/firebase";
+import { auth } from "../../src/config/firebase";
 import { validateEmail, validatePassword } from "../../src/utils/validation";
 
-export default function SignupScreen() {
+export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSignUp = async () => {
+  const handleLogin = async () => {
     if (!validateEmail(email)) return setStatus("Please enter a valid email.");
     if (!validatePassword(password))
       return setStatus("Password must be at least 6 characters.");
 
     try {
       setLoading(true);
-      setStatus("Creating account...");
-
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
-      const user = userCredential.user;
-
-      // create a user profile document in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        email: user.email,
-        createdAt: new Date().toISOString(),
-      });
-
-      setStatus("Account created!");
-      router.replace("/(tabs)/Home");
+      setStatus("Logging in...");
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      setStatus("Login successful!");
+      router.replace("/(tabs)");
     } catch (error: any) {
       console.error(error);
       setStatus(getFirebaseErrorMessage(error.code));
@@ -54,12 +40,11 @@ export default function SignupScreen() {
 
   const getFirebaseErrorMessage = (code: string): string => {
     switch (code) {
-      case "auth/email-already-in-use":
-        return "This email is already registered.";
-      case "auth/invalid-email":
-        return "Please enter a valid email address.";
-      case "auth/weak-password":
-        return "Password is too weak. Try something stronger.";
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        return "Incorrect email or password.";
+      case "auth/user-not-found":
+        return "No account found with that email.";
       case "auth/too-many-requests":
         return "Too many attempts. Try again later.";
       default:
@@ -69,9 +54,8 @@ export default function SignupScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.title}>Welcome Back</Text>
 
-      {/* Email Input */}
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -82,7 +66,6 @@ export default function SignupScreen() {
         keyboardType="email-address"
       />
 
-      {/* Password Input */}
       <TextInput
         style={styles.input}
         placeholder="Password"
@@ -94,20 +77,20 @@ export default function SignupScreen() {
 
       <TouchableOpacity
         style={[styles.button, loading && { opacity: 0.6 }]}
-        onPress={handleSignUp}
+        onPress={handleLogin}
         disabled={loading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
-          <Text style={styles.buttonText}>Sign Up</Text>
+          <Text style={styles.buttonText}>Login</Text>
         )}
       </TouchableOpacity>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
-      <TouchableOpacity onPress={() => router.push("/(auth)/Login")}>
-        <Text style={styles.switchText}>Already have an account? Log in</Text>
+      <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
+        <Text style={styles.switchText}>Don't have an account? Sign Up</Text>
       </TouchableOpacity>
     </View>
   );
