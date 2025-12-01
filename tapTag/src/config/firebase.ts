@@ -1,7 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { initializeApp } from "firebase/app";
 import { getReactNativePersistence, initializeAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 
+// --- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -12,11 +14,16 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+// --- Initialize Firebase ---
 const app = initializeApp(firebaseConfig);
 
-// ✅ Enable persistent login for React Native
+// --- Enable persistent Auth for React Native ---
 const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
 
-export { app, auth };
+// --- Initialize Firestore ---
+const db = getFirestore(app);
+
+// --- Exports ---
+export { app, auth, db };

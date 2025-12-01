@@ -3,6 +3,7 @@ import { createUserWithEmailAndPassword } from "firebase/auth";
 import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   TextInput,
@@ -10,34 +11,59 @@ import {
   View,
 } from "react-native";
 import { auth, db } from "../../src/config/firebase";
+import { validateEmail, validatePassword } from "../../src/utils/validation";
 
 export default function SignupScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleSignUp = async () => {
-    setStatus("Creating Account...");
+    if (!validateEmail(email)) return setStatus("Please enter a valid email.");
+    if (!validatePassword(password))
+      return setStatus("Password must be at least 6 characters.");
+
     try {
+      setLoading(true);
+      setStatus("Creating account...");
+
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        email,
+        email.trim(),
         password
       );
       const user = userCredential.user;
 
-      // create a user profile document in firestore
+      // create a user profile document in Firestore
       await setDoc(doc(db, "users", user.uid), {
         email: user.email,
         createdAt: new Date().toISOString(),
       });
 
-      setStatus("Account Created!");
-      router.replace("/(tabs)");
+      setStatus("Account created!");
+      router.replace("/(tabs)/Home");
     } catch (error: any) {
       console.error(error);
-      setStatus(`${error.message}`);
+      setStatus(getFirebaseErrorMessage(error.code));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getFirebaseErrorMessage = (code: string): string => {
+    switch (code) {
+      case "auth/email-already-in-use":
+        return "This email is already registered.";
+      case "auth/invalid-email":
+        return "Please enter a valid email address.";
+      case "auth/weak-password":
+        return "Password is too weak. Try something stronger.";
+      case "auth/too-many-requests":
+        return "Too many attempts. Try again later.";
+      default:
+        return "Something went wrong. Please try again.";
     }
   };
 
@@ -53,6 +79,7 @@ export default function SignupScreen() {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        keyboardType="email-address"
       />
 
       {/* Password Input */}
@@ -65,11 +92,19 @@ export default function SignupScreen() {
         secureTextEntry
       />
 
-      <TouchableOpacity style={styles.button} onPress={handleSignUp}>
-        <Text style={styles.buttonText}>Sign Up</Text>
+      <TouchableOpacity
+        style={[styles.button, loading && { opacity: 0.6 }]}
+        onPress={handleSignUp}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Sign Up</Text>
+        )}
       </TouchableOpacity>
 
-      <Text style={styles.status}>{status}</Text>
+      {status ? <Text style={styles.status}>{status}</Text> : null}
 
       <TouchableOpacity onPress={() => router.push("/(auth)/Login")}>
         <Text style={styles.switchText}>Already have an account? Log in</Text>
@@ -85,6 +120,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#000",
     padding: 20,
+  },
+  title: {
+    fontSize: 28,
+    color: "#fff",
+    fontWeight: "700",
+    marginBottom: 30,
   },
   input: {
     width: "100%",
@@ -102,7 +143,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  switchText: { color: "#0af", marginTop: 20 },
+  switchText: { color: "#0af", marginTop: 15 },
   status: { color: "#fff", marginTop: 15 },
-  title: { color: "#fff", fontSize: 22, fontWeight: "700", marginBottom: 20 },
 });
