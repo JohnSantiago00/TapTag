@@ -1,13 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getAnalytics, isSupported } from "firebase/analytics";
 import { initializeApp } from "firebase/app";
-import {
-  getAuth,
-  getReactNativePersistence,
-  initializeAuth,
-} from "firebase/auth";
+import { getReactNativePersistence, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// --- Firebase Configuration ---
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -18,25 +14,16 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
+// --- Initialize Firebase ---
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
 
-// Try to get an existing Auth instance; if none, initialize with persistence
-let auth;
-try {
-  auth = getAuth(app);
-} catch {
-  auth = initializeAuth(app, {
-    persistence: getReactNativePersistence(AsyncStorage),
-  });
-}
-export { auth };
+// --- Enable persistent Auth for React Native ---
+const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
 
-// Analytics only in browsers
-if (typeof window !== "undefined") {
-  isSupported().then((ok) => {
-    if (ok) getAnalytics(app);
-  });
-}
+// --- Initialize Firestore ---
+const db = getFirestore(app);
 
-export default {};
+// --- Exports ---
+export { app, auth, db };
