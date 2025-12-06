@@ -29,6 +29,12 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="Lab"
+        options={{
+          title: "Lab",
+        }}
+      />
 
       <Tabs.Screen
         name="Profile"

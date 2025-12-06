@@ -1,22 +1,76 @@
-interface Card {
+// src/utils/recommendCard.ts
+
+export interface Card {
   name: string;
-  baseReward: number;
-  bonusCategories?: { category: string; reward: number }[];
+  categoryRewards: Record<string, number>;
+  baseReward?: number; // Optional fallback
 }
 
+// 🧪 Weighted random generator for testing cards
+// Dining and Groceries have higher odds of bigger rewards
+export function generateWeightedRandomRewards() {
+  const categories = [
+    "Dining",
+    "Groceries",
+    "Gas",
+    "Travel",
+    "Entertainment",
+    "Online Shopping",
+  ];
+  const rewards: Record<string, number> = {};
+
+  categories.forEach((cat) => {
+    let weight = 1;
+
+    // Increase odds for more common high categories
+    if (cat === "Dining" || cat === "Groceries") weight = 1.5;
+    if (cat === "Travel") weight = 1.3;
+
+    // Generate reward between 1–5, slightly biased higher for weighted cats
+    const random = Math.random();
+    const reward = Math.ceil(random * 5 * weight);
+    rewards[cat] = Math.min(reward, 5); // cap at 5%
+  });
+
+  return rewards;
+}
+
+// 🧠 Core TapTag recommendation engine
 export const getBestCard = (cards: Card[], category: string) => {
-  let bestCard = cards[0];
-  let bestReward = cards[0]?.baseReward || 0;
+  if (!cards || cards.length === 0) {
+    return { bestCard: { name: "None", categoryRewards: {} }, bestReward: 0 };
+  }
+
+  let bestCards: Card[] = [];
+  let bestReward = 0;
 
   for (const card of cards) {
-    const bonus = card.bonusCategories?.find(
-      (b) => b.category.toLowerCase() === category.toLowerCase()
-    );
-    const reward = bonus ? bonus.reward : card.baseReward;
+    // Get the reward for this merchant category
+    const reward = card.categoryRewards?.[category] ?? card.baseReward ?? 1; // default 1% if missing
+
     if (reward > bestReward) {
       bestReward = reward;
-      bestCard = card;
+      bestCards = [card];
+    } else if (reward === bestReward) {
+      bestCards.push(card);
     }
+  }
+
+  // 🟦 Handle ties
+  let bestCard: Card;
+  if (bestCards.length > 1) {
+    // Prefer the card with more category coverage (more reward types)
+    const maxCategoryCount = Math.max(
+      ...bestCards.map((c) => Object.keys(c.categoryRewards).length)
+    );
+    const topCandidates = bestCards.filter(
+      (c) => Object.keys(c.categoryRewards).length === maxCategoryCount
+    );
+
+    // If still tied, pick randomly
+    bestCard = topCandidates[Math.floor(Math.random() * topCandidates.length)];
+  } else {
+    bestCard = bestCards[0];
   }
 
   return { bestCard, bestReward };
