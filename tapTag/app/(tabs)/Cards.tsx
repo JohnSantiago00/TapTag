@@ -91,7 +91,7 @@ export default function CardsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 20 },
+  container: { flex: 1, backgroundColor: "#000", padding: 80 },
   title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 10 },
   addRow: { flexDirection: "row", marginBottom: 20 },
   input: {
