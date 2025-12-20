@@ -5,7 +5,7 @@ import { getCategoryByMcc } from "../../src/services/firestore/mccMap";
 import { getUserCards } from "../../src/services/firestore/userCards";
 import { getBestCard } from "../../src/utils/recommendCard";
 
-export default function HomeScreen() {
+export default function Home() {
   const [best, setBest] = useState<{ name: string; reward: number } | null>(
     null
   );

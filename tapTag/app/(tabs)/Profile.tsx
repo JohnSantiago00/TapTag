@@ -2,7 +2,7 @@ import { auth } from "@/src/config/firebase";
 import { signOut } from "firebase/auth";
 import { StyleSheet, Text, View } from "react-native";
 
-export default function ProfileScreen() {
+export default function Profile() {
   const handleLogout = async () => {
     await signOut(auth);
   };

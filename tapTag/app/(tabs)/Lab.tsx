@@ -17,7 +17,7 @@ import {
 } from "../../src/services/firestore/userCards";
 import { getBestCard } from "../../src/utils/recommendCard";
 
-export default function LabScreen() {
+export default function Lab() {
   const [cards, setCards] = useState<Card[]>([]);
   const [name, setName] = useState("");
   const [merchantMcc, setMerchantMcc] = useState("5814"); // Default: Starbucks (Dining)
