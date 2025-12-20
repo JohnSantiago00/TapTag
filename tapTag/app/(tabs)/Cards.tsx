@@ -15,7 +15,7 @@ import {
   getUserCards,
 } from "../../src/services/firestore/userCards";
 
-export default function CardsScreen() {
+export default function Cards() {
   const [cards, setCards] = useState<Card[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
@@ -91,7 +91,7 @@ export default function CardsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 80 },
+  container: {  backgroundColor: "#000", padding:80 },
   title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 10 },
   addRow: { flexDirection: "row", marginBottom: 20 },
   input: {
