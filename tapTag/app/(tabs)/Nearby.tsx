@@ -54,7 +54,7 @@ export default function Nearby() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 80 },
+  container: { flex: 1, backgroundColor: "#000", padding: 70 },
   title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 20 },
   merchantBox: {
     backgroundColor: "#111",
