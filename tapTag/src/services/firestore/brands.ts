@@ -1,7 +1,18 @@
-import { db } from "@/src/config/firebase";
 import { collection, getDocs } from "firebase/firestore";
+import { db } from "../../config/firebase";
 
-export const getBrands = async () => {
-  const snapshot = await getDocs(collection(db, "brands"));
-  return snapshot.docs.map((d) => ({ id: d.id, ...d.data }));
-};
+export interface Brand {
+  id: string;
+  name: string;
+  mcc: number;
+  category: string;
+}
+
+export async function getAllBrands(): Promise<Brand[]> {
+  const ref = collection(db, "brands");
+  const snapshot = await getDocs(ref);
+  return snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as Omit<Brand, "id">),
+  }));
+}

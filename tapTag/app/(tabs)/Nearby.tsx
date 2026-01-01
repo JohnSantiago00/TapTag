@@ -1,69 +1,80 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { auth } from "../../src/config/firebase";
+import { Brand, getAllBrands } from "../../src/services/firestore/brands";
 import { getCategoryByMcc } from "../../src/services/firestore/mccMap";
 import { getUserCards } from "../../src/services/firestore/userCards";
 import { getBestCard } from "../../src/utils/recommendCard";
 
-const mockMerchants = [
-  { name: "Starbucks", mcc: 5814 },
-  { name: "Shell Gas", mcc: 5541 },
-  { name: "Whole Foods", mcc: 5411 },
-  { name: "AMC Theatres", mcc: 7832 },
-  { name: "Amazon", mcc: 5942 },
-];
-
 export default function Nearby() {
+  const [brands, setBrands] = useState<Brand[]>([]);
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
   const user = auth.currentUser;
 
-  async function handleSelectMerchant(merchant: { name: string; mcc: number }) {
+  useEffect(() => {
+    loadBrands();
+  }, []);
+
+  async function loadBrands() {
+    const data = await getAllBrands();
+    setBrands(data);
+  }
+
+  async function handleSelect(brand: Brand) {
     if (!user) return;
     setLoading(true);
-    const category = await getCategoryByMcc(merchant.mcc);
+
+    const category = await getCategoryByMcc(brand.mcc);
     const cards = await getUserCards(user.uid);
     const { bestCard, bestReward } = getBestCard(cards, category);
+
     setResult(
-      `🛒 ${merchant.name} → ${category}\n💳 ${bestCard.name} (${bestReward}% back)`
+      `🛒 ${brand.name} (${category})\n💳 Best Card: ${bestCard.name} (${bestReward}% back)`
     );
     setLoading(false);
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📍 Nearby Test Merchants</Text>
+      <Text style={styles.title}>📍 Nearby Merchants (Live from Firestore)</Text>
+
       <FlatList
-        data={mockMerchants}
-        keyExtractor={(item) => item.mcc.toString()}
+        data={brands}
+        keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.merchantBox}
-            onPress={() => handleSelectMerchant(item)}
+            style={styles.brandBox}
+            onPress={() => handleSelect(item)}
           >
-            <Text style={styles.merchantName}>{item.name}</Text>
-            <Text style={styles.mccText}>MCC: {item.mcc}</Text>
+            <Text style={styles.brandName}>{item.name}</Text>
+            <Text style={styles.brandDetails}>
+              MCC: {item.mcc} • Category: {item.category}
+            </Text>
           </TouchableOpacity>
         )}
       />
+
       <View style={styles.resultBox}>
-        <Text style={styles.resultText}>{loading ? "Checking..." : result}</Text>
+        <Text style={styles.resultText}>
+          {loading ? "Analyzing..." : result}
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 70 },
+  container: { flex: 1, backgroundColor: "#000", padding: 50 },
   title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 20 },
-  merchantBox: {
+  brandBox: {
     backgroundColor: "#111",
     padding: 14,
     borderRadius: 8,
     marginBottom: 10,
   },
-  merchantName: { color: "#fff", fontSize: 18, fontWeight: "600" },
-  mccText: { color: "#888", fontSize: 12, marginTop: 4 },
+  brandName: { color: "#fff", fontSize: 18, fontWeight: "600" },
+  brandDetails: { color: "#888", fontSize: 12, marginTop: 4 },
   resultBox: {
     marginTop: 20,
     backgroundColor: "#111",
