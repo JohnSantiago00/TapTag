@@ -1,85 +1,124 @@
+import * as Location from "expo-location";
 import { useEffect, useState } from "react";
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { auth } from "../../src/config/firebase";
 import { Brand, getAllBrands } from "../../src/services/firestore/brands";
 import { getCategoryByMcc } from "../../src/services/firestore/mccMap";
 import { getUserCards } from "../../src/services/firestore/userCards";
+import { getDistance } from "../../src/utils/distance";
 import { getBestCard } from "../../src/utils/recommendCard";
 
 export default function Nearby() {
+  const [status, setStatus] = useState("Waiting for location...");
   const [brands, setBrands] = useState<Brand[]>([]);
-  const [result, setResult] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [location, setLocation] = useState<Location.LocationObject | null>(null);
   const user = auth.currentUser;
 
   useEffect(() => {
-    loadBrands();
+    (async () => {
+      // 1️⃣ Request location permissions
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setStatus("Location permission denied.");
+        return;
+      }
+
+      // 2️⃣ Get current device location
+      const loc = await Location.getCurrentPositionAsync({});
+      console.log("📍 Device Location:", loc.coords.latitude, loc.coords.longitude);
+      setLocation(loc);
+
+      // 3️⃣ Fetch all brands from Firestore
+      const fetchedBrands = await getAllBrands();
+      console.log("🏪 Loaded brands:", fetchedBrands.map(b => b.name).join(", "));
+      setBrands(fetchedBrands);
+
+      setStatus("Tracking nearby merchants...");
+    })();
   }, []);
 
-  async function loadBrands() {
-    const data = await getAllBrands();
-    setBrands(data);
-  }
+  useEffect(() => {
+    if (location && brands.length > 0) {
+      checkNearby(location);
+    }
+  }, [location, brands]);
 
-  async function handleSelect(brand: Brand) {
+  // 🔍 Core detection logic
+  async function checkNearby(loc: Location.LocationObject) {
     if (!user) return;
-    setLoading(true);
 
-    const category = await getCategoryByMcc(brand.mcc);
     const cards = await getUserCards(user.uid);
-    const { bestCard, bestReward } = getBestCard(cards, category);
+    if (!cards.length) {
+      setStatus("No saved cards found. Please add cards first.");
+      return;
+    }
 
-    setResult(
-      `🛒 ${brand.name} (${category})\n💳 Best Card: ${bestCard.name} (${bestReward}% back)`
-    );
-    setLoading(false);
+    let foundMerchant = false;
+
+    for (const brand of brands) {
+      if (!brand.coordinates) continue;
+
+      const distance = getDistance(
+        loc.coords.latitude,
+        loc.coords.longitude,
+        brand.coordinates.lat,
+        brand.coordinates.lng
+      );
+
+      console.log(
+        `🗺️ Checking ${brand.name} → Distance: ${distance.toFixed(1)} m`
+      );
+
+      // ✅ Within ~150 meters
+      if (distance < 150) {
+        const category = await getCategoryByMcc(brand.mcc);
+        const { bestCard, bestReward } = getBestCard(cards, category);
+
+        console.log(
+          `✅ Within range of ${brand.name}: ${distance.toFixed(1)}m — Recommended: ${bestCard.name} (${bestReward}%)`
+        );
+
+        // Instead of notifications → update on-screen text
+        setStatus(
+          `💳 Use ${bestCard.name}! ${brand.name} (${category}) → ${bestReward}% back`
+        );
+
+        foundMerchant = true;
+        break;
+      }
+    }
+
+    if (!foundMerchant) {
+      setStatus("No nearby merchants detected.");
+    }
   }
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>📍 Nearby Merchants (Live from Firestore)</Text>
-
-      <FlatList
-        data={brands}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.brandBox}
-            onPress={() => handleSelect(item)}
-          >
-            <Text style={styles.brandName}>{item.name}</Text>
-            <Text style={styles.brandDetails}>
-              MCC: {item.mcc} • Category: {item.category}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
-
-      <View style={styles.resultBox}>
-        <Text style={styles.resultText}>
-          {loading ? "Analyzing..." : result}
-        </Text>
-      </View>
+      <Text style={styles.title}>📡 TapTag Geo Trigger Test</Text>
+      <Text style={styles.status}>{status}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 50 },
-  title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 20 },
-  brandBox: {
-    backgroundColor: "#111",
-    padding: 14,
-    borderRadius: 8,
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  title: {
+    color: "#0af",
+    fontSize: 22,
+    fontWeight: "700",
     marginBottom: 10,
   },
-  brandName: { color: "#fff", fontSize: 18, fontWeight: "600" },
-  brandDetails: { color: "#888", fontSize: 12, marginTop: 4 },
-  resultBox: {
-    marginTop: 20,
-    backgroundColor: "#111",
-    padding: 16,
-    borderRadius: 8,
+  status: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+    marginTop: 10,
   },
-  resultText: { color: "#0af", fontSize: 16, textAlign: "center" },
 });
