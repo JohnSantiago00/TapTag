@@ -70,7 +70,7 @@ export default function Nearby() {
       );
 
       // ✅ Within ~150 meters
-      if (distance < 150) {
+      if (distance < 500) {
         const category = await getCategoryByMcc(brand.mcc);
         const { bestCard, bestReward } = getBestCard(cards, category);
 
