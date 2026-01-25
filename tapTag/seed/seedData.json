@@ -1,0 +1,37 @@
+{
+  "cards": {
+    "amex_gold": {
+      "name": "American Express Gold Card",
+      "issuer": "American Express",
+      "network": "Amex",
+      "rewardRules": [
+        { "category": "Dining", "rate": 4 },
+        { "category": "Groceries", "rate": 4 },
+        { "category": "Travel", "rate": 3 },
+        { "category": "Other", "rate": 1 }
+      ],
+      "annualFee": 250
+    },
+    "chase_sapphire_preferred": {
+      "name": "Chase Sapphire Preferred",
+      "issuer": "Chase",
+      "network": "Visa",
+      "rewardRules": [
+        { "category": "Travel", "rate": 2 },
+        { "category": "Dining", "rate": 3 },
+        { "category": "Other", "rate": 1 }
+      ],
+      "annualFee": 95
+    }
+  },
+
+  "brands": {
+    "starbucks": { "name": "Starbucks", "mcc": 5814, "category": "Coffee Shop" },
+    "whole_foods": { "name": "Whole Foods", "mcc": 5411, "category": "Groceries" }
+  },
+
+  "mcc_map": {
+    "5814": { "category": "Coffee Shops", "description": "Cafés and coffeehouses" },
+    "5411": { "category": "Groceries", "description": "Supermarkets and grocery stores" }
+  }
+}
