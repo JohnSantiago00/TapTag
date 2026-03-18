@@ -1,214 +1,209 @@
 import { useEffect, useState } from "react";
 import {
-  FlatList,
+  ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
-import { auth } from "../../src/config/firebase";
-import { getCategoryByMcc } from "../../src/services/firestore/mccMap";
+import { getAllBrands, Brand } from "../../src/services/firestore/brands";
+import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
 import {
-  addUserCard,
-  Card,
-  deleteUserCard,
-  getUserCards,
-} from "../../src/services/firestore/userCards";
-import { getBestCard } from "../../src/utils/recommendCard";
+  getAllMccMappings,
+  MccMapping,
+} from "../../src/services/firestore/mccMap";
 
 export default function Lab() {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [name, setName] = useState("");
-  const [merchantMcc, setMerchantMcc] = useState("5814"); // Default: Starbucks (Dining)
-  const [bestCard, setBestCard] = useState<string>("");
-  const [category, setCategory] = useState("");
-  const [log, setLog] = useState<string[]>([]);
-  const user = auth.currentUser;
+  const [cards, setCards] = useState<KnowledgeCard[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [mccMappings, setMccMappings] = useState<MccMapping[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
-    loadCards();
+    loadKnowledgeLayer();
   }, []);
 
-  async function loadCards() {
-    const data = await getUserCards(user!.uid);
-    setCards(data);
-  }
+  async function loadKnowledgeLayer() {
+    try {
+      setLoading(true);
+      setError(null);
 
-  function generateRandomRewards() {
-    const categories = [
-      "Dining",
-      "Groceries",
-      "Gas",
-      "Travel",
-      "Entertainment",
-      "Online Shopping",
-    ];
-    const rewards: Record<string, number> = {};
+      const [loadedCards, loadedBrands, loadedMccMappings] = await Promise.all([
+        getAllCards(),
+        getAllBrands(),
+        getAllMccMappings(),
+      ]);
 
-    categories.forEach((cat) => {
-      // Random reward between 1% and 5%
-      rewards[cat] = Math.floor(Math.random() * 5) + 1;
-    });
-
-    return rewards;
-  }
-
-  async function handleAddCard() {
-    if (!name.trim()) return;
-    await addUserCard(user!.uid, {
-      name,
-      categoryRewards: generateRandomRewards(),
-      createdAt: new Date().toISOString(),
-    });
-    setName("");
-    await loadCards();
-  }
-
-  async function handleDelete(id: string) {
-    await deleteUserCard(user!.uid, id);
-    await loadCards();
-  }
-
-  async function handleTestLogic() {
-    if (!cards.length) {
-      setBestCard("No cards found!");
-      return;
+      setCards(loadedCards);
+      setBrands(loadedBrands);
+      setMccMappings(loadedMccMappings);
+    } catch (err) {
+      console.error("Error loading knowledge layer:", err);
+      setError("Could not load Firestore knowledge-layer data.");
+    } finally {
+      setLoading(false);
     }
+  }
 
-    const categoryName = await getCategoryByMcc(Number(merchantMcc));
-    const { bestCard, bestReward } = getBestCard(cards, categoryName);
+  if (loading) {
+    return (
+      <View style={styles.stateContainer}>
+        <ActivityIndicator color="#0af" />
+        <Text style={styles.stateText}>Loading TapTag knowledge layer...</Text>
+      </View>
+    );
+  }
 
-    setCategory(categoryName);
-    setBestCard(`${bestCard.name} (${bestReward}% back)`);
-    setLog((prev) => [
-      `${new Date().toLocaleTimeString()} → MCC ${merchantMcc} (${categoryName}) → ${
-        bestCard.name
-      } (${bestReward}%)`,
-      ...prev,
-    ]);
+  if (error) {
+    return (
+      <View style={styles.stateContainer}>
+        <Text style={styles.errorTitle}>Lab Error</Text>
+        <Text style={styles.errorText}>{error}</Text>
+      </View>
+    );
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>🧠 TapTag Lab (Testing)</Text>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <Text style={styles.title}>TapTag Lab</Text>
+      <Text style={styles.subtitle}>
+        Firestore knowledge-layer debug screen
+      </Text>
 
-      {/* Add Cards */}
-      <View style={styles.addRow}>
-        <TextInput
-          style={styles.input}
-          placeholder="Card Name"
-          placeholderTextColor="#aaa"
-          value={name}
-          onChangeText={setName}
-        />
-        <TouchableOpacity style={styles.addButton} onPress={handleAddCard}>
-          <Text style={{ color: "#fff" }}>Add</Text>
-        </TouchableOpacity>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Cards ({cards.length})</Text>
+        {cards.map((card) => (
+          <View key={card.id} style={styles.itemCard}>
+            <Text style={styles.itemTitle}>
+              {card.name} ({card.id})
+            </Text>
+            <Text style={styles.itemMeta}>
+              {card.issuer} • {card.network} • Annual Fee: $
+              {card.annualFee ?? 0}
+            </Text>
+            <Text style={styles.itemBody}>
+              Rewards:{" "}
+              {card.rewardRules.length
+                ? card.rewardRules
+                    .map((rule) => `${rule.category} ${rule.rate}x`)
+                    .join(" | ")
+                : "No reward rules"}
+            </Text>
+          </View>
+        ))}
       </View>
 
-      {/* Card List */}
-      <FlatList
-        data={cards}
-        keyExtractor={(item) => item.id!}
-        renderItem={({ item }) => (
-          <View style={styles.cardRow}>
-            <Text style={styles.cardName}>{item.name}</Text>
-            <Text style={styles.rewardText}>
-              {Object.entries(item.categoryRewards)
-                .map(([cat, val]) => `${cat}: ${val}%`)
-                .join(" | ")}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Brands ({brands.length})</Text>
+        {brands.map((brand) => (
+          <View key={brand.id} style={styles.itemCard}>
+            <Text style={styles.itemTitle}>
+              {brand.name} ({brand.id})
             </Text>
-            <TouchableOpacity onPress={() => handleDelete(item.id!)}>
-              <Text style={{ color: "#f55" }}>Delete</Text>
-            </TouchableOpacity>
+            <Text style={styles.itemBody}>Category: {brand.category}</Text>
+            <Text style={styles.itemBody}>MCC: {brand.mcc}</Text>
+            <Text style={styles.itemBody}>
+              Coordinates:{" "}
+              {brand.coordinates
+                ? `${brand.coordinates.lat}, ${brand.coordinates.lng}`
+                : "None"}
+            </Text>
           </View>
-        )}
-      />
+        ))}
+      </View>
 
-      {/* Merchant Simulator */}
-      <Text style={styles.sectionTitle}>🛒 Test Merchant</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter MCC (e.g. 5814)"
-        placeholderTextColor="#aaa"
-        value={merchantMcc}
-        onChangeText={setMerchantMcc}
-        keyboardType="numeric"
-      />
-
-      <TouchableOpacity style={styles.testButton} onPress={handleTestLogic}>
-        <Text style={styles.testText}>Run Recommendation</Text>
-      </TouchableOpacity>
-
-      {bestCard ? (
-        <View style={styles.resultBox}>
-          <Text style={styles.resultText}>Category: {category}</Text>
-          <Text style={styles.resultText}>Best Card: {bestCard}</Text>
-        </View>
-      ) : null}
-
-      {/* Log */}
-      <Text style={styles.sectionTitle}>🧾 Logs</Text>
-      {log.map((entry, i) => (
-        <Text key={i} style={styles.logText}>
-          {entry}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>
+          MCC Mappings ({mccMappings.length})
         </Text>
-      ))}
-    </View>
+        {mccMappings.map((mapping) => (
+          <View key={mapping.id} style={styles.itemCard}>
+            <Text style={styles.itemTitle}>MCC {mapping.id}</Text>
+            <Text style={styles.itemBody}>Category: {mapping.category}</Text>
+            <Text style={styles.itemBody}>
+              Description: {mapping.description || "None"}
+            </Text>
+          </View>
+        ))}
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000", padding: 30 },
-  title: { color: "#0af", fontSize: 22, fontWeight: "700", marginBottom: 10 },
-  addRow: { flexDirection: "row", marginBottom: 10 },
-  input: {
+  container: {
     flex: 1,
-    backgroundColor: "#111",
-    color: "#fff",
-    borderRadius: 8,
-    padding: 10,
-    marginRight: 10,
+    backgroundColor: "#000",
   },
-  addButton: {
-    backgroundColor: "#0af",
-    paddingHorizontal: 16,
+  content: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  stateContainer: {
+    flex: 1,
+    backgroundColor: "#000",
     justifyContent: "center",
-    borderRadius: 8,
+    alignItems: "center",
+    padding: 24,
   },
-  cardRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    backgroundColor: "#111",
-    padding: 12,
-    borderRadius: 8,
+  stateText: {
+    color: "#aaa",
+    marginTop: 12,
+    fontSize: 16,
+    textAlign: "center",
+  },
+  errorTitle: {
+    color: "#f55",
+    fontSize: 22,
+    fontWeight: "700",
     marginBottom: 8,
   },
-  cardName: { color: "#fff", fontSize: 10 },
+  errorText: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  title: {
+    color: "#0af",
+    fontSize: 28,
+    fontWeight: "700",
+  },
+  subtitle: {
+    color: "#aaa",
+    fontSize: 15,
+    marginTop: 6,
+    marginBottom: 20,
+  },
+  section: {
+    marginBottom: 24,
+  },
   sectionTitle: {
     color: "#0af",
-    marginTop: 20,
     fontSize: 18,
     fontWeight: "600",
+    marginBottom: 10,
   },
-  testButton: {
-    backgroundColor: "#0af",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 10,
-    alignItems: "center",
-  },
-  testText: { color: "#fff", fontWeight: "600" },
-  resultBox: {
+  itemCard: {
     backgroundColor: "#111",
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 15,
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 10,
   },
-  resultText: { color: "#fff", fontSize: 16 },
-  rewardText: { color: "#0af", fontSize: 10, marginTop: 4 },
-
-  logText: { color: "#888", fontSize: 10, marginTop: 5 },
+  itemTitle: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  itemMeta: {
+    color: "#0af",
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  itemBody: {
+    color: "#ddd",
+    fontSize: 14,
+    lineHeight: 20,
+  },
 });
