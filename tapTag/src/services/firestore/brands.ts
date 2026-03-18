@@ -41,6 +41,6 @@ export async function getAllBrands(): Promise<Brand[]> {
     return brands;
   } catch (error) {
     console.error("Error fetching brands:", error);
-    return [];
+    throw error;
   }
 }

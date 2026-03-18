@@ -1,33 +1,25 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { useAuthRedirect } from "@/hooks/useAuthRedirect";
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from "@react-navigation/native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import "react-native-reanimated";
 import "../src/config/firebase";
+import { useAuthRedirect } from "../hooks/useAuthRedirect";
 import { AuthProvider } from "../src/context/AuthContext";
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
+function RootNavigator() {
   useAuthRedirect();
 
   return (
+    <>
+      <Stack screenOptions={{ headerShown: false }} />
+      <StatusBar style="auto" />
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
-          {/* App entry */}
-          <Stack.Screen name="index" />
-          {/* Auth stack */}
-          <Stack.Screen name="(auth)" />
-          {/* Tabs (once logged in) */}
-          <Stack.Screen name="(tabs)" />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <RootNavigator />
     </AuthProvider>
   );
 }

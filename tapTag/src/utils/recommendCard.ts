@@ -6,36 +6,7 @@ export interface Card {
   baseReward?: number; // Optional fallback
 }
 
-// 🧪 Weighted random generator for testing cards
-// Dining and Groceries have higher odds of bigger rewards
-export function generateWeightedRandomRewards() {
-  const categories = [
-    "Dining",
-    "Groceries",
-    "Gas",
-    "Travel",
-    "Entertainment",
-    "Online Shopping",
-  ];
-  const rewards: Record<string, number> = {};
-
-  categories.forEach((cat) => {
-    let weight = 1;
-
-    // Increase odds for more common high categories
-    if (cat === "Dining" || cat === "Groceries") weight = 1.5;
-    if (cat === "Travel") weight = 1.3;
-
-    // Generate reward between 1–5, slightly biased higher for weighted cats
-    const random = Math.random();
-    const reward = Math.ceil(random * 5 * weight);
-    rewards[cat] = Math.min(reward, 5); // cap at 5%
-  });
-
-  return rewards;
-}
-
-// 🧠 Core TapTag recommendation engine
+// Kept as a small utility for later recommendation phases.
 export const getBestCard = (cards: Card[], category: string) => {
   if (!cards || cards.length === 0) {
     return { bestCard: { name: "None", categoryRewards: {} }, bestReward: 0 };
