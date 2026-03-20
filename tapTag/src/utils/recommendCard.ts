@@ -32,6 +32,7 @@ export function recommendBestCardForCategory(
   let bestCard: RecommenderCard | null = null;
   let bestRate = 0;
   let matchedCategory = normalizedCategory;
+  let tiedCards: RecommenderCard[] = [];
 
   for (const card of cards) {
     const directMatch = card.rewardRules.find(
@@ -48,6 +49,9 @@ export function recommendBestCardForCategory(
       bestCard = card;
       bestRate = chosenRule.rate;
       matchedCategory = chosenRule.category;
+      tiedCards = [card];
+    } else if (chosenRule.rate === bestRate && chosenRule.rate > 0) {
+      tiedCards.push(card);
     }
   }
 
@@ -62,11 +66,22 @@ export function recommendBestCardForCategory(
 
   const reasonCategory =
     matchedCategory === normalizedCategory ? normalizedCategory : "Other";
+  const isFallback = matchedCategory !== normalizedCategory;
+  const hasTie = tiedCards.length > 1;
+
+  let reason = isFallback
+    ? `No direct ${normalizedCategory} match found. Falling back to Other at ${bestRate}x.`
+    : `Best match for ${reasonCategory} at ${bestRate}x.`;
+
+  if (hasTie) {
+    const tiedCardNames = tiedCards.map((card) => card.name).join(", ");
+    reason += ` Tie at ${bestRate}x between ${tiedCardNames}. Showing ${bestCard.name} as the first matching card.`;
+  }
 
   return {
     bestCard,
     bestRate,
     matchedCategory,
-    reason: `Best match for ${reasonCategory} at ${bestRate}x`,
+    reason,
   };
 }
