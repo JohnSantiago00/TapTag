@@ -7,41 +7,76 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth } from "../../src/config/firebase";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useAuth } from "../../src/context/AuthContext";
+import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
 import {
-  Card,
-  deleteUserCard,
-  getUserCards,
-} from "../../src/services/firestore/userCards";
+  addWalletCard,
+  getUserWallet,
+  removeWalletCard,
+  WalletCardRef,
+} from "../../src/services/firestore/wallet";
 
 export default function Cards() {
-  const [cards, setCards] = useState<Card[]>([]);
-  const [loading, setLoading] = useState(false);
-  const user = auth.currentUser;
+  const { user } = useAuth();
+  const [cards, setCards] = useState<KnowledgeCard[]>([]);
+  const [wallet, setWallet] = useState<WalletCardRef[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
-    loadCards();
-  }, []);
+    loadWalletScreen();
+  }, [user?.uid]);
 
-  async function loadCards() {
+  async function loadWalletScreen() {
     if (!user) return;
     setLoading(true);
     try {
-      const data = await getUserCards(user.uid);
-      setCards(data);
+      const [availableCards, selectedWallet] = await Promise.all([
+        getAllCards(),
+        getUserWallet(user.uid),
+      ]);
+      setCards(availableCards);
+      setWallet(selectedWallet.filter((item) => item.enabled));
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleDelete(id: string) {
-    await deleteUserCard(user!.uid, id);
-    await loadCards();
+  const selectedIds = new Set(wallet.map((item) => item.id));
+
+  async function handleToggleWalletCard(cardId: string, isSelected: boolean) {
+    if (!user) return;
+
+    setSavingCardId(cardId);
+    try {
+      if (isSelected) {
+        await removeWalletCard(user.uid, cardId);
+      } else {
+        await addWalletCard(user.uid, cardId);
+      }
+      await loadWalletScreen();
+    } finally {
+      setSavingCardId(null);
+    }
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <Text style={styles.title}>Wallet</Text>
+        <View style={styles.infoCard}>
+          <Text style={styles.infoText}>
+            Sign in to choose the card products you already own.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       <Text style={styles.title}>Wallet</Text>
 
       <View style={styles.infoCard}>
@@ -56,16 +91,16 @@ export default function Cards() {
       <View style={styles.infoCard}>
         <Text style={styles.infoTitle}>This phase</Text>
         <Text style={styles.infoText}>
-          Manual custom card creation has been removed so the app does not drift
-          toward a fake build-your-own-card model. Wallet selection by real card
-          products will come in a later phase.
+          Choose from seeded card products only. TapTag stores lightweight card
+          product references in your wallet, not sensitive payment details.
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>Legacy Prototype Entries</Text>
+      <Text style={styles.sectionTitle}>
+        Selected Cards ({wallet.length})
+      </Text>
       <Text style={styles.helperText}>
-        Older test cards can still be removed here if they already exist in
-        your account.
+        Your Lab recommendations will use these selected card products.
       </Text>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}
@@ -73,7 +108,7 @@ export default function Cards() {
       {!loading && !cards.length ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>
-            No legacy prototype cards are saved for this account.
+            No seeded card products are available yet.
           </Text>
         </View>
       ) : null}
@@ -81,23 +116,38 @@ export default function Cards() {
       {!loading && cards.length ? (
         <FlatList
           data={cards}
-          keyExtractor={(item) => item.id!}
+          keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
             <View style={styles.cardRow}>
               <View style={styles.cardCopy}>
                 <Text style={styles.cardText}>{item.name}</Text>
                 <Text style={styles.cardMeta}>
-                  Legacy test entry from an earlier prototype
+                  {item.issuer} • {item.network}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => handleDelete(item.id!)}>
-                <Text style={styles.deleteText}>Remove</Text>
+              <TouchableOpacity
+                onPress={() =>
+                  handleToggleWalletCard(item.id, selectedIds.has(item.id))
+                }
+                disabled={savingCardId === item.id}
+              >
+                <Text
+                  style={
+                    selectedIds.has(item.id) ? styles.removeText : styles.addText
+                  }
+                >
+                  {savingCardId === item.id
+                    ? "Saving..."
+                    : selectedIds.has(item.id)
+                      ? "Remove"
+                      : "Add"}
+                </Text>
               </TouchableOpacity>
             </View>
           )}
         />
       ) : null}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -165,7 +215,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 4,
   },
-  deleteText: {
+  addText: {
+    color: "#0af",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  removeText: {
     color: "#f55",
     fontSize: 14,
     fontWeight: "600",

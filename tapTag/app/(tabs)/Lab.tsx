@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,46 +8,58 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
+import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/firestore/brands";
 import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
 import {
   getAllMccMappings,
   MccMapping,
 } from "../../src/services/firestore/mccMap";
+import { getUserWallet, WalletCardRef } from "../../src/services/firestore/wallet";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
-const DEMO_WALLET_CARD_IDS = [
-  "amex_gold",
-  "chase_sapphire_preferred",
-  "citi_custom_cash",
-];
-
 export default function Lab() {
+  const { user } = useAuth();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mccMappings, setMccMappings] = useState<MccMapping[]>([]);
+  const [wallet, setWallet] = useState<WalletCardRef[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     loadKnowledgeLayer();
-  }, []);
+  }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      loadKnowledgeLayer();
+    }, [user?.uid])
+  );
 
   async function loadKnowledgeLayer() {
+    if (!user) return;
+
     try {
       setLoading(true);
       setError(null);
 
-      const [loadedCards, loadedBrands, loadedMccMappings] = await Promise.all([
-        getAllCards(),
-        getAllBrands(),
-        getAllMccMappings(),
-      ]);
+      const [loadedCards, loadedBrands, loadedMccMappings, loadedWallet] =
+        await Promise.all([
+          getAllCards(),
+          getAllBrands(),
+          getAllMccMappings(),
+          getUserWallet(user.uid),
+        ]);
 
       setCards(loadedCards);
       setBrands(loadedBrands);
       setMccMappings(loadedMccMappings);
+      setWallet(loadedWallet.filter((item) => item.enabled));
       setSelectedBrandId((current) => current ?? loadedBrands[0]?.id ?? null);
     } catch (err) {
       console.error("Error loading knowledge layer:", err);
@@ -55,6 +67,17 @@ export default function Lab() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.stateContainer}>
+        <Text style={styles.errorTitle}>Lab</Text>
+        <Text style={styles.errorText}>
+          Sign in and select cards in Wallet to test recommendations.
+        </Text>
+      </SafeAreaView>
+    );
   }
 
   if (loading) {
@@ -75,18 +98,20 @@ export default function Lab() {
     );
   }
 
-  const demoWalletCards = cards.filter((card) =>
-    DEMO_WALLET_CARD_IDS.includes(card.id)
-  );
+  const walletCardIds = new Set(wallet.map((item) => item.id));
+  const walletCards = cards.filter((card) => walletCardIds.has(card.id));
   const selectedBrand =
     brands.find((brand) => brand.id === selectedBrandId) ?? brands[0] ?? null;
   const selectedMccMapping =
     mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
-  const normalizedCategory =
-    selectedMccMapping?.normalizedCategory ?? "Other";
+  const normalizedCategory = selectedMccMapping?.normalizedCategory ?? "Other";
   const recommendation = selectedBrand
-    ? recommendBestCardForCategory(demoWalletCards, normalizedCategory)
+    ? recommendBestCardForCategory(walletCards, normalizedCategory)
     : null;
+
+  const walletSummary = walletCards.length
+    ? walletCards.map((card) => card.name).join(", ")
+    : "No cards selected yet";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -98,9 +123,7 @@ export default function Lab() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Demo Recommendation</Text>
-          <Text style={styles.helperText}>
-            Demo wallet: Amex Gold, Chase Sapphire Preferred, Citi Custom Cash
-          </Text>
+          <Text style={styles.helperText}>Wallet: {walletSummary}</Text>
 
           <View style={styles.pickerRow}>
             {brands.map((brand) => {
