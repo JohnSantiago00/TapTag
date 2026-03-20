@@ -12,6 +12,17 @@ initializeApp({ credential: cert(serviceAccount) });
 
 const db = getFirestore();
 
+const ALLOWED_NORMALIZED_CATEGORIES = [
+  'Dining',
+  'Groceries',
+  'Gas',
+  'Travel',
+  'Transportation',
+  'Entertainment',
+  'Online Shopping',
+  'Other'
+];
+
 // ------------------------------
 // KNOWLEDGE LAYER SEED DATA
 // ------------------------------
@@ -62,19 +73,73 @@ const cards = [
 
 // MCC Map
 const mccMap = [
-  { mcc: 5812, category: 'Dining - Restaurants', description: 'Full-service dining establishments', exampleBrands: ['Olive Garden', 'Applebee’s'] },
-  { mcc: 5814, category: 'Dining - Coffee Shop', description: 'Cafes and coffeehouses', exampleBrands: ['Starbucks', 'Dunkin’'] },
-  { mcc: 5411, category: 'Groceries', description: 'Supermarkets and grocery stores', exampleBrands: ['Whole Foods', 'Kroger'] },
-  { mcc: 4112, category: 'Transportation', description: 'Passenger railways and commuter services', exampleBrands: ['Amtrak'] },
-  { mcc: 5541, category: 'Gas Stations', description: 'Fuel and convenience services', exampleBrands: ['Shell', 'BP'] },
+  { mcc: 5812, category: 'Dining - Restaurants', normalizedCategory: 'Dining', description: 'Full-service dining establishments', exampleBrands: ['Olive Garden', 'Applebee’s'] },
+  { mcc: 5814, category: 'Dining - Coffee Shop', normalizedCategory: 'Dining', description: 'Cafes and coffeehouses', exampleBrands: ['Starbucks', 'Dunkin’'] },
+  { mcc: 5311, category: 'Online Shopping', normalizedCategory: 'Online Shopping', description: 'Online marketplaces and e-commerce merchants', exampleBrands: ['Amazon'] },
+  { mcc: 5411, category: 'Groceries', normalizedCategory: 'Groceries', description: 'Supermarkets and grocery stores', exampleBrands: ['Whole Foods', 'Kroger'] },
+  { mcc: 4112, category: 'Transportation', normalizedCategory: 'Transportation', description: 'Passenger railways and commuter services', exampleBrands: ['Amtrak'] },
+  { mcc: 5541, category: 'Gas Stations', normalizedCategory: 'Gas', description: 'Fuel and convenience services', exampleBrands: ['Shell', 'BP'] },
 ];
 
 // Brands
 const brands = [
+  { id: 'amazon', name: 'Amazon', category: 'Online Shopping', mcc: 5311, brandLogo: 'https://logo.clearbit.com/amazon.com', commonLocations: [] },
   { id: 'starbucks', name: 'Starbucks', category: 'Coffee Shop', mcc: 5814, commonLocations: [{ lat: 40.7128, lon: -74.006, address: 'New York, NY' }] },
   { id: 'whole_foods', name: 'Whole Foods Market', category: 'Groceries', mcc: 5411, commonLocations: [{ lat: 37.7749, lon: -122.4194, address: 'San Francisco, CA' }] },
   { id: 'shell', name: 'Shell Gas Station', category: 'Gas Station', mcc: 5541, commonLocations: [{ lat: 29.7604, lon: -95.3698, address: 'Houston, TX' }] }
 ];
+
+function assert(condition, message) {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+function validateCards(cardsToValidate) {
+  cardsToValidate.forEach((card) => {
+    assert(card.id, `Card is missing id: ${JSON.stringify(card)}`);
+    assert(card.name, `Card ${card.id} is missing name`);
+    assert(Array.isArray(card.rewardRules), `Card ${card.id} is missing rewardRules array`);
+    assert(card.rewardRules.length > 0, `Card ${card.id} must include at least one reward rule`);
+
+    card.rewardRules.forEach((rule, index) => {
+      assert(rule.category, `Card ${card.id} rewardRules[${index}] is missing category`);
+      assert(Number.isFinite(Number(rule.rate)), `Card ${card.id} rewardRules[${index}] has invalid rate`);
+    });
+  });
+}
+
+function validateBrands(brandsToValidate) {
+  brandsToValidate.forEach((brand) => {
+    assert(brand.id, `Brand is missing id: ${JSON.stringify(brand)}`);
+    assert(Array.isArray(brand.commonLocations), `Brand ${brand.id} must use commonLocations array`);
+
+    brand.commonLocations.forEach((location, index) => {
+      assert(Number.isFinite(Number(location.lat)), `Brand ${brand.id} commonLocations[${index}] has invalid lat`);
+      assert(Number.isFinite(Number(location.lon)), `Brand ${brand.id} commonLocations[${index}] has invalid lon`);
+    });
+  });
+}
+
+function validateMccMap(mccMappingsToValidate) {
+  mccMappingsToValidate.forEach((mapping) => {
+    assert(Number.isFinite(Number(mapping.mcc)), `MCC mapping has invalid mcc: ${JSON.stringify(mapping)}`);
+    assert(mapping.category, `MCC ${mapping.mcc} is missing category`);
+    assert(mapping.normalizedCategory, `MCC ${mapping.mcc} is missing normalizedCategory`);
+    assert(
+      ALLOWED_NORMALIZED_CATEGORIES.includes(mapping.normalizedCategory),
+      `MCC ${mapping.mcc} has unsupported normalizedCategory: ${mapping.normalizedCategory}`
+    );
+  });
+}
+
+function auditKnowledgeLayer() {
+  validateCards(cards);
+  validateBrands(brands);
+  validateMccMap(mccMap);
+
+  console.log('🔎 Knowledge layer schema audit passed');
+}
 
 // ------------------------------
 // FIRESTORE WRITE LOGIC
@@ -93,6 +158,7 @@ async function seedCollection(collectionName, dataList) {
 (async () => {
   try {
     console.log('🚀 Starting Firestore Knowledge Layer Seeding...');
+    auditKnowledgeLayer();
     await seedCollection('cards', cards);
     await seedCollection('brands', brands);
     await seedCollection('mcc_map', mccMap);

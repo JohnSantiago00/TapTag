@@ -15,6 +15,22 @@ export interface KnowledgeCard {
   annualFee?: number | null;
 }
 
+function normalizeRewardRules(rawRules: unknown): KnowledgeCardRewardRule[] {
+  if (!Array.isArray(rawRules)) {
+    return [];
+  }
+
+  return rawRules
+    .map((rule: any) => ({
+      category:
+        typeof rule?.category === "string" && rule.category.trim()
+          ? rule.category.trim()
+          : "Other",
+      rate: Number(rule?.rate) || 0,
+    }))
+    .filter((rule) => rule.rate > 0);
+}
+
 export async function getAllCards(): Promise<KnowledgeCard[]> {
   try {
     const ref = collection(db, "cards");
@@ -28,12 +44,7 @@ export async function getAllCards(): Promise<KnowledgeCard[]> {
         name: data.name || "Unknown Card",
         issuer: data.issuer || "Unknown Issuer",
         network: data.network || "Unknown Network",
-        rewardRules: Array.isArray(data.rewardRules)
-          ? data.rewardRules.map((rule: any) => ({
-              category: rule.category || "Other",
-              rate: Number(rule.rate) || 0,
-            }))
-          : [],
+        rewardRules: normalizeRewardRules(data.rewardRules),
         annualFee:
           data.annualFee === undefined || data.annualFee === null
             ? null

@@ -104,9 +104,12 @@ export default function Lab() {
             <Text style={styles.itemBody}>Category: {brand.category}</Text>
             <Text style={styles.itemBody}>MCC: {brand.mcc}</Text>
             <Text style={styles.itemBody}>
-              Coordinates:{" "}
-              {brand.coordinates
-                ? `${brand.coordinates.lat}, ${brand.coordinates.lng}`
+              Common Locations: {brand.commonLocations.length}
+            </Text>
+            <Text style={styles.itemBody}>
+              Sample Location:{" "}
+              {brand.commonLocations[0]
+                ? `${brand.commonLocations[0].lat}, ${brand.commonLocations[0].lon}`
                 : "None"}
             </Text>
           </View>
@@ -121,6 +124,9 @@ export default function Lab() {
           <View key={mapping.id} style={styles.itemCard}>
             <Text style={styles.itemTitle}>MCC {mapping.id}</Text>
             <Text style={styles.itemBody}>Category: {mapping.category}</Text>
+            <Text style={styles.itemBody}>
+              Normalized Category: {mapping.normalizedCategory}
+            </Text>
             <Text style={styles.itemBody}>
               Description: {mapping.description || "None"}
             </Text>

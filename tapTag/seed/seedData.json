@@ -22,16 +22,56 @@
         { "category": "Other", "rate": 1 }
       ],
       "annualFee": 95
+    },
+    "citi_custom_cash": {
+      "name": "Citi Custom Cash Card",
+      "issuer": "Citi",
+      "network": "Mastercard",
+      "rewardRules": [
+        { "category": "Top Monthly Spend Category", "rate": 5 },
+        { "category": "Other", "rate": 1 }
+      ],
+      "annualFee": 0
     }
   },
 
   "brands": {
-    "starbucks": { "name": "Starbucks", "mcc": 5814, "category": "Coffee Shop" },
-    "whole_foods": { "name": "Whole Foods", "mcc": 5411, "category": "Groceries" }
+    "amazon": {
+      "name": "Amazon",
+      "mcc": 5311,
+      "category": "Online Shopping",
+      "brandLogo": "https://logo.clearbit.com/amazon.com",
+      "commonLocations": []
+    },
+    "starbucks": {
+      "name": "Starbucks",
+      "mcc": 5814,
+      "category": "Coffee Shop",
+      "commonLocations": [{ "lat": 40.7128, "lon": -74.006, "address": "New York, NY" }]
+    },
+    "whole_foods": {
+      "name": "Whole Foods",
+      "mcc": 5411,
+      "category": "Groceries",
+      "commonLocations": [{ "lat": 37.7749, "lon": -122.4194, "address": "San Francisco, CA" }]
+    }
   },
 
   "mcc_map": {
-    "5814": { "category": "Coffee Shops", "description": "Cafés and coffeehouses" },
-    "5411": { "category": "Groceries", "description": "Supermarkets and grocery stores" }
+    "5311": {
+      "category": "Online Shopping",
+      "normalizedCategory": "Online Shopping",
+      "description": "Online marketplaces and e-commerce merchants"
+    },
+    "5814": {
+      "category": "Dining - Coffee Shop",
+      "normalizedCategory": "Dining",
+      "description": "Cafés and coffeehouses"
+    },
+    "5411": {
+      "category": "Groceries",
+      "normalizedCategory": "Groceries",
+      "description": "Supermarkets and grocery stores"
+    }
   }
 }

@@ -1,20 +1,48 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../config/firebase";
 
-// Define the structure of each brand document
+export interface BrandLocation {
+  lat: number;
+  lon: number;
+  address?: string;
+}
+
 export interface Brand {
   id: string;
   name: string;
   mcc: number;
   category: string;
   brandLogo?: string;
-  coordinates?: {
-    lat: number;
-    lng: number;
-  };
+  commonLocations: BrandLocation[];
 }
 
-// Fetch all brands from Firestore
+function normalizeCommonLocations(data: any): BrandLocation[] {
+  if (Array.isArray(data.commonLocations)) {
+    return data.commonLocations
+      .map((location: any) => ({
+        lat: Number(location?.lat),
+        lon: Number(location?.lon),
+        address:
+          typeof location?.address === "string" ? location.address : undefined,
+      }))
+      .filter(
+        (location) =>
+          Number.isFinite(location.lat) && Number.isFinite(location.lon)
+      );
+  }
+
+  if (data.coordinates) {
+    const lat = Number(data.coordinates.lat);
+    const lon = Number(data.coordinates.lon ?? data.coordinates.lng);
+
+    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+      return [{ lat, lon }];
+    }
+  }
+
+  return [];
+}
+
 export async function getAllBrands(): Promise<Brand[]> {
   try {
     const ref = collection(db, "brands");
@@ -29,12 +57,7 @@ export async function getAllBrands(): Promise<Brand[]> {
         mcc: Number(data.mcc) || 0,
         category: data.category || "Unknown",
         brandLogo: data.brandLogo || null,
-        coordinates: data.coordinates
-          ? {
-              lat: Number(data.coordinates.lat),
-              lng: Number(data.coordinates.lng),
-            }
-          : undefined,
+        commonLocations: normalizeCommonLocations(data),
       } as Brand;
     });
 
