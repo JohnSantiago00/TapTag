@@ -1,32 +1,201 @@
-import { StyleSheet, Text, View } from "react-native";
+import * as Location from "expo-location";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
+import { useAuth } from "../../src/context/AuthContext";
+import { getAllBrands, Brand } from "../../src/services/firestore/brands";
+import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
+import {
+  getAllMccMappings,
+  MccMapping,
+} from "../../src/services/firestore/mccMap";
+import { getUserWallet } from "../../src/services/firestore/wallet";
+import { getDistance } from "../../src/utils/distance";
+import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
+
+const NEARBY_RADIUS_METERS = 500;
+
+type NearbyMatch = {
+  brand: Brand;
+  distanceMeters: number;
+  normalizedCategory: string;
+  recommendation: ReturnType<typeof recommendBestCardForCategory>;
+};
 
 export default function Nearby() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("Checking your current location...");
+  const [match, setMatch] = useState<NearbyMatch | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      loadNearbyRecommendation();
+    }, [user?.uid])
+  );
+
+  async function loadNearbyRecommendation() {
+    if (!user) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+      setMatch(null);
+      setStatus("Checking your current location...");
+
+      const [permission, brands, cards, mccMappings, wallet] = await Promise.all([
+        Location.requestForegroundPermissionsAsync(),
+        getAllBrands(),
+        getAllCards(),
+        getAllMccMappings(),
+        getUserWallet(user.uid),
+      ]);
+
+      if (permission.status !== "granted") {
+        setStatus("Location permission was not granted.");
+        return;
+      }
+
+      const walletCardIds = new Set(
+        wallet.filter((item) => item.enabled).map((item) => item.id)
+      );
+      const walletCards = cards.filter((card) => walletCardIds.has(card.id));
+
+      if (!walletCards.length) {
+        setStatus("No wallet cards selected yet. Add cards in Wallet first.");
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+
+      let nearestBrand: Brand | null = null;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      for (const brand of brands) {
+        for (const merchantLocation of brand.commonLocations) {
+          const distanceMeters = getDistance(
+            location.coords.latitude,
+            location.coords.longitude,
+            merchantLocation.lat,
+            merchantLocation.lon
+          );
+
+          if (distanceMeters < nearestDistance) {
+            nearestBrand = brand;
+            nearestDistance = distanceMeters;
+          }
+        }
+      }
+
+      if (!nearestBrand || !Number.isFinite(nearestDistance)) {
+        setStatus("No seeded merchant locations are available yet.");
+        return;
+      }
+
+      if (nearestDistance > NEARBY_RADIUS_METERS) {
+        setStatus(
+          `No seeded merchants found within ${NEARBY_RADIUS_METERS}m. Nearest known merchant: ${nearestBrand.name} at ${Math.round(
+            nearestDistance
+          )}m.`
+        );
+        return;
+      }
+
+      const mapping =
+        mccMappings.find((item) => item.mcc === nearestBrand.mcc) ?? null;
+      const normalizedCategory = mapping?.normalizedCategory ?? "Other";
+      const recommendation = recommendBestCardForCategory(
+        walletCards,
+        normalizedCategory
+      );
+
+      setMatch({
+        brand: nearestBrand,
+        distanceMeters: nearestDistance,
+        normalizedCategory,
+        recommendation,
+      });
+      setStatus("Nearby recommendation ready.");
+    } catch (err) {
+      console.error("Error loading nearby recommendation:", err);
+      setError("Could not load nearby recommendation.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!user) {
+    return (
+      <SafeAreaView style={styles.stateContainer}>
+        <Text style={styles.title}>Nearby</Text>
+        <Text style={styles.status}>
+          Sign in and choose wallet cards before testing nearby recommendations.
+        </Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.stateContainer}>
+        <ActivityIndicator color="#0af" />
+        <Text style={styles.status}>Loading nearby merchant check...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.stateContainer}>
+        <Text style={styles.errorTitle}>Nearby Error</Text>
+        <Text style={styles.status}>{error}</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Nearby</Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Later roadmap phase</Text>
-        <Text style={styles.status}>
-          Live foreground location detection and nearby merchant nudges are not
-          active yet in this build.
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Nearby</Text>
+        <Text style={styles.subtitle}>
+          Foreground location prototype using seeded merchant locations.
         </Text>
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Planned behavior</Text>
-        <Text style={styles.status}>
-          TapTag will eventually notice nearby merchants, map them to a category
-          or brand, and suggest the best saved card product without storing
-          sensitive payment details.
-        </Text>
-      </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Status</Text>
+          <Text style={styles.status}>{status}</Text>
+        </View>
 
-      <Text style={styles.footer}>
-        For now, use the Lab tab to verify the Firestore knowledge layer that
-        will support this flow later.
-      </Text>
-    </View>
+        {match ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Nearby Recommendation</Text>
+            <Text style={styles.status}>Merchant: {match.brand.name}</Text>
+            <Text style={styles.status}>
+              Distance: {Math.round(match.distanceMeters)}m
+            </Text>
+            <Text style={styles.status}>MCC: {match.brand.mcc}</Text>
+            <Text style={styles.status}>
+              Normalized Category: {match.normalizedCategory}
+            </Text>
+            <Text style={styles.status}>
+              Best Card: {match.recommendation.bestCard?.name ?? "None"}
+            </Text>
+            <Text style={styles.status}>
+              Reason: {match.recommendation.reason}
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -34,14 +203,35 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  content: {
+    padding: 24,
+    paddingBottom: 40,
+  },
+  stateContainer: {
+    flex: 1,
+    backgroundColor: "#000",
     justifyContent: "center",
+    alignItems: "center",
     padding: 24,
   },
   title: {
     color: "#0af",
     fontSize: 28,
     fontWeight: "700",
-    marginBottom: 14,
+    marginBottom: 8,
+  },
+  subtitle: {
+    color: "#888",
+    fontSize: 15,
+    lineHeight: 21,
+    marginBottom: 18,
+  },
+  errorTitle: {
+    color: "#f55",
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 8,
   },
   card: {
     backgroundColor: "#111",
@@ -59,11 +249,5 @@ const styles = StyleSheet.create({
     color: "#ddd",
     fontSize: 15,
     lineHeight: 21,
-  },
-  footer: {
-    color: "#888",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 6,
   },
 });
