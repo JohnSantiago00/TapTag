@@ -1,48 +1,72 @@
-// src/utils/recommendCard.ts
-
-export interface Card {
-  name: string;
-  categoryRewards: Record<string, number>;
-  baseReward?: number; // Optional fallback
+export interface RewardRule {
+  category: string;
+  rate: number;
 }
 
-// Kept as a small utility for later recommendation phases.
-export const getBestCard = (cards: Card[], category: string) => {
-  if (!cards || cards.length === 0) {
-    return { bestCard: { name: "None", categoryRewards: {} }, bestReward: 0 };
+export interface RecommenderCard {
+  id?: string;
+  name: string;
+  rewardRules: RewardRule[];
+}
+
+export interface RecommendationResult {
+  bestCard: RecommenderCard | null;
+  bestRate: number;
+  matchedCategory: string;
+  reason: string;
+}
+
+export function recommendBestCardForCategory(
+  cards: RecommenderCard[],
+  normalizedCategory: string
+): RecommendationResult {
+  if (!cards.length) {
+    return {
+      bestCard: null,
+      bestRate: 0,
+      matchedCategory: normalizedCategory,
+      reason: "No demo wallet cards were available.",
+    };
   }
 
-  let bestCards: Card[] = [];
-  let bestReward = 0;
+  let bestCard: RecommenderCard | null = null;
+  let bestRate = 0;
+  let matchedCategory = normalizedCategory;
 
   for (const card of cards) {
-    // Get the reward for this merchant category
-    const reward = card.categoryRewards?.[category] ?? card.baseReward ?? 1; // default 1% if missing
+    const directMatch = card.rewardRules.find(
+      (rule) => rule.category === normalizedCategory
+    );
+    const fallbackMatch = card.rewardRules.find((rule) => rule.category === "Other");
+    const chosenRule = directMatch ?? fallbackMatch;
 
-    if (reward > bestReward) {
-      bestReward = reward;
-      bestCards = [card];
-    } else if (reward === bestReward) {
-      bestCards.push(card);
+    if (!chosenRule) {
+      continue;
+    }
+
+    if (chosenRule.rate > bestRate) {
+      bestCard = card;
+      bestRate = chosenRule.rate;
+      matchedCategory = chosenRule.category;
     }
   }
 
-  // 🟦 Handle ties
-  let bestCard: Card;
-  if (bestCards.length > 1) {
-    // Prefer the card with more category coverage (more reward types)
-    const maxCategoryCount = Math.max(
-      ...bestCards.map((c) => Object.keys(c.categoryRewards).length)
-    );
-    const topCandidates = bestCards.filter(
-      (c) => Object.keys(c.categoryRewards).length === maxCategoryCount
-    );
-
-    // If still tied, pick randomly
-    bestCard = topCandidates[Math.floor(Math.random() * topCandidates.length)];
-  } else {
-    bestCard = bestCards[0];
+  if (!bestCard) {
+    return {
+      bestCard: null,
+      bestRate: 0,
+      matchedCategory: normalizedCategory,
+      reason: `No matching reward rule was found for ${normalizedCategory}.`,
+    };
   }
 
-  return { bestCard, bestReward };
-};
+  const reasonCategory =
+    matchedCategory === normalizedCategory ? normalizedCategory : "Other";
+
+  return {
+    bestCard,
+    bestRate,
+    matchedCategory,
+    reason: `Best match for ${reasonCategory} at ${bestRate}x`,
+  };
+}

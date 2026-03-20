@@ -3,6 +3,7 @@ import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 
 export interface MccMapping {
   id: string;
+  mcc: number;
   category: string;
   normalizedCategory: string;
   description?: string;
@@ -32,6 +33,7 @@ export async function getAllMccMappings(): Promise<MccMapping[]> {
 
       return {
         id: mappingDoc.id,
+        mcc: Number(data.mcc) || Number(mappingDoc.id) || 0,
         category: data.category || "Unknown Category",
         normalizedCategory: normalizeCategoryName(data),
         description: data.description || "",
