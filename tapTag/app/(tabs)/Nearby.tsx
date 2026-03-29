@@ -39,7 +39,16 @@ export default function Nearby() {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-      loadNearbyRecommendation();
+
+      let locationSubscription: Location.LocationSubscription | undefined;
+
+      (async () => {
+        locationSubscription = await loadNearbyRecommendation();
+      })();
+
+      return () => {
+        locationSubscription?.remove();
+      };
     }, [user?.uid])
   );
 
@@ -52,13 +61,14 @@ export default function Nearby() {
       setMatch(null);
       setStatus("Checking your current location...");
 
-      const [permission, brands, cards, mccMappings, wallet] = await Promise.all([
-        Location.requestForegroundPermissionsAsync(),
-        getAllBrands(),
-        getAllCards(),
-        getAllMccMappings(),
-        getUserWallet(user.uid),
-      ]);
+      const [permission, brands, cards, mccMappings, wallet] =
+        await Promise.all([
+          Location.requestForegroundPermissionsAsync(),
+          getAllBrands(),
+          getAllCards(),
+          getAllMccMappings(),
+          getUserWallet(user.uid),
+        ]);
 
       if (permission.status !== "granted") {
         setStatus("Location permission was not granted.");
@@ -75,56 +85,72 @@ export default function Nearby() {
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({});
+      const evaluateNearbyLocation = (location: Location.LocationObject) => {
+        let nearestBrand: Brand | null = null;
+        let nearestDistance = Number.POSITIVE_INFINITY;
 
-      let nearestBrand: Brand | null = null;
-      let nearestDistance = Number.POSITIVE_INFINITY;
+        for (const brand of brands) {
+          for (const merchantLocation of brand.commonLocations) {
+            const distanceMeters = getDistance(
+              location.coords.latitude,
+              location.coords.longitude,
+              merchantLocation.lat,
+              merchantLocation.lon
+            );
 
-      for (const brand of brands) {
-        for (const merchantLocation of brand.commonLocations) {
-          const distanceMeters = getDistance(
-            location.coords.latitude,
-            location.coords.longitude,
-            merchantLocation.lat,
-            merchantLocation.lon
-          );
-
-          if (distanceMeters < nearestDistance) {
-            nearestBrand = brand;
-            nearestDistance = distanceMeters;
+            if (distanceMeters < nearestDistance) {
+              nearestBrand = brand;
+              nearestDistance = distanceMeters;
+            }
           }
         }
-      }
 
-      if (!nearestBrand || !Number.isFinite(nearestDistance)) {
-        setStatus("No seeded merchant locations are available yet.");
-        return;
-      }
+        if (!nearestBrand || !Number.isFinite(nearestDistance)) {
+          setMatch(null);
+          setStatus("No seeded merchant locations are available yet.");
+          return;
+        }
 
-      if (nearestDistance > NEARBY_RADIUS_METERS) {
-        setStatus(
-          `No seeded merchants found within ${NEARBY_RADIUS_METERS}m. Nearest known merchant: ${nearestBrand.name} at ${Math.round(
-            nearestDistance
-          )}m.`
+        if (nearestDistance > NEARBY_RADIUS_METERS) {
+          setMatch(null);
+          setStatus(
+            `No seeded merchants found within ${NEARBY_RADIUS_METERS}m. Nearest known merchant: ${nearestBrand.name} at ${Math.round(
+              nearestDistance
+            )}m.`
+          );
+          return;
+        }
+
+        const mapping =
+          mccMappings.find((item) => item.mcc === nearestBrand.mcc) ?? null;
+        const normalizedCategory = mapping?.normalizedCategory ?? "Other";
+        const recommendation = recommendBestCardForCategory(
+          walletCards,
+          normalizedCategory
         );
-        return;
-      }
 
-      const mapping =
-        mccMappings.find((item) => item.mcc === nearestBrand.mcc) ?? null;
-      const normalizedCategory = mapping?.normalizedCategory ?? "Other";
-      const recommendation = recommendBestCardForCategory(
-        walletCards,
-        normalizedCategory
-      );
+        setMatch({
+          brand: nearestBrand,
+          distanceMeters: nearestDistance,
+          normalizedCategory,
+          recommendation,
+        });
+        setStatus("Nearby recommendation ready.");
+      };
 
-      setMatch({
-        brand: nearestBrand,
-        distanceMeters: nearestDistance,
-        normalizedCategory,
-        recommendation,
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
       });
-      setStatus("Nearby recommendation ready.");
+      evaluateNearbyLocation(location);
+
+      return await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Highest,
+          distanceInterval: 1,
+          timeInterval: 1000,
+        },
+        evaluateNearbyLocation
+      );
     } catch (err) {
       console.error("Error loading nearby recommendation:", err);
       setError("Could not load nearby recommendation.");
@@ -162,6 +188,11 @@ export default function Nearby() {
     );
   }
 
+  const nudgeText =
+    match?.recommendation.bestCard && match.normalizedCategory
+      ? `Use ${match.recommendation.bestCard.name} here for better ${match.normalizedCategory} rewards.`
+      : null;
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -169,6 +200,13 @@ export default function Nearby() {
         <Text style={styles.subtitle}>
           Foreground location prototype using seeded merchant locations.
         </Text>
+
+        {nudgeText ? (
+          <View style={styles.nudgeCard}>
+            <Text style={styles.nudgeLabel}>TapTag Nudge</Text>
+            <Text style={styles.nudgeText}>{nudgeText}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Status</Text>
@@ -238,6 +276,25 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+  },
+  nudgeCard: {
+    backgroundColor: "#0af",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  nudgeLabel: {
+    color: "#002133",
+    fontSize: 13,
+    fontWeight: "700",
+    marginBottom: 6,
+    textTransform: "uppercase",
+  },
+  nudgeText: {
+    color: "#00131f",
+    fontSize: 16,
+    fontWeight: "600",
+    lineHeight: 22,
   },
   cardTitle: {
     color: "#0af",
