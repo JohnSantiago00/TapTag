@@ -1,6 +1,5 @@
 import { useRouter } from "expo-router";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -10,7 +9,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { auth, db } from "../../src/config/firebase";
+import { auth } from "../../src/config/firebase";
+import { upsertUserProfile } from "../../src/services/firestore/userProfile";
 import { validateEmail, validatePassword } from "../../src/utils/validation";
 
 export default function SignupScreen() {
@@ -36,10 +36,8 @@ export default function SignupScreen() {
       );
       const user = userCredential.user;
 
-      // create a user profile document in Firestore
-      await setDoc(doc(db, "users", user.uid), {
-        email: user.email,
-        createdAt: new Date().toISOString(),
+      await upsertUserProfile(user.uid, {
+        displayName: user.displayName ?? undefined,
       });
 
       setStatus("Account created!");

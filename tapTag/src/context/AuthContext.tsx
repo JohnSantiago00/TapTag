@@ -1,6 +1,7 @@
 import { User, onAuthStateChanged } from "firebase/auth";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { auth } from "../config/firebase";
+import { upsertUserProfile } from "../services/firestore/userProfile";
 
 type AuthContextType = {
   user: User | null;
@@ -17,8 +18,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (usr) => {
+    const unsubscribe = onAuthStateChanged(auth, async (usr) => {
       setUser(usr);
+
+      if (usr) {
+        try {
+          await upsertUserProfile(usr.uid, {
+            displayName: usr.displayName ?? undefined,
+          });
+        } catch (error) {
+          console.error("Error ensuring user profile:", error);
+        }
+      }
+
       setLoading(false);
     });
     return unsubscribe;
