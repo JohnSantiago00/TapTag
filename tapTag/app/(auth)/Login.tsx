@@ -29,7 +29,7 @@ export default function Login() {
       setStatus("Logging in...");
       await signInWithEmailAndPassword(auth, email.trim(), password);
       setStatus("Login successful!");
-      router.replace("/(tabs)");
+      router.replace("/(tabs)/Home");
     } catch (error: any) {
       console.error(error);
       setStatus(getFirebaseErrorMessage(error.code));
@@ -90,7 +90,9 @@ export default function Login() {
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
       <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
-        <Text style={styles.switchText}>Don't have an account? Sign Up</Text>
+        <Text style={styles.switchText}>
+          Don&apos;t have an account? Sign Up
+        </Text>
       </TouchableOpacity>
     </View>
   );
