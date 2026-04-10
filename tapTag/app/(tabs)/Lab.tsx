@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -16,6 +16,7 @@ import {
   getAllMccMappings,
   MccMapping,
 } from "../../src/services/firestore/mccMap";
+import { trackUserEvent } from "../../src/services/firestore/events";
 import { getUserWallet, WalletCardRef } from "../../src/services/firestore/wallet";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
@@ -28,6 +29,7 @@ export default function Lab() {
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const lastTrackedRecommendationKey = useRef<string | null>(null);
 
   const loadKnowledgeLayer = useCallback(async () => {
     if (!user) return;
@@ -69,12 +71,72 @@ export default function Lab() {
     }, [loadKnowledgeLayer, user])
   );
 
+  const walletCardIds = new Set(wallet.map((item) => item.id));
+  const walletCards = cards.filter((card) => walletCardIds.has(card.id));
+  const selectedBrand =
+    brands.find((brand) => brand.id === selectedBrandId) ?? brands[0] ?? null;
+  const selectedMccMapping =
+    mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
+  const normalizedCategory = selectedMccMapping?.normalizedCategory ?? "Other";
+  const recommendation = selectedBrand
+    ? recommendBestCardForCategory(walletCards, normalizedCategory)
+    : null;
+
+  const walletSummary = walletCards.length
+    ? walletCards.map((card) => card.name).join(", ")
+    : "No cards selected yet";
+  const hasWalletCards = walletCards.length > 0;
+  const recommendationKey = [
+    selectedBrand?.id ?? "none",
+    normalizedCategory,
+    recommendation?.bestCard?.id ?? "none",
+    walletCards.map((card) => card.id).sort().join(","),
+  ].join("|");
+
+  useEffect(() => {
+    if (!user || !selectedBrand || !recommendation?.bestCard || !hasWalletCards) {
+      return;
+    }
+
+    if (lastTrackedRecommendationKey.current === recommendationKey) {
+      return;
+    }
+
+    lastTrackedRecommendationKey.current = recommendationKey;
+
+    trackUserEvent(user.uid, {
+      eventType: "recommendation_shown",
+      source: "lab",
+      brandId: selectedBrand.id,
+      brandName: selectedBrand.name,
+      cardProductIds: walletCards.map((card) => card.id),
+      recommendedCardProductId: recommendation.bestCard.id,
+      recommendedCardName: recommendation.bestCard.name,
+      normalizedCategory,
+      merchantMcc: selectedBrand.mcc,
+      metadata: {
+        rewardRate: recommendation.bestRate,
+      },
+    }).catch((trackingError) => {
+      console.error("Error tracking lab recommendation event:", trackingError);
+    });
+  }, [
+    hasWalletCards,
+    normalizedCategory,
+    recommendation?.bestCard,
+    recommendation?.bestRate,
+    recommendationKey,
+    selectedBrand,
+    user,
+    walletCards,
+  ]);
+
   if (!user) {
     return (
       <SafeAreaView style={styles.stateContainer}>
         <Text style={styles.errorTitle}>Lab</Text>
         <Text style={styles.errorText}>
-          Sign in and select cards in Wallet to test recommendations.
+          Sign in and select wallet cards to test recommendations.
         </Text>
       </SafeAreaView>
     );
@@ -98,31 +160,16 @@ export default function Lab() {
     );
   }
 
-  const walletCardIds = new Set(wallet.map((item) => item.id));
-  const walletCards = cards.filter((card) => walletCardIds.has(card.id));
-  const selectedBrand =
-    brands.find((brand) => brand.id === selectedBrandId) ?? brands[0] ?? null;
-  const selectedMccMapping =
-    mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
-  const normalizedCategory = selectedMccMapping?.normalizedCategory ?? "Other";
-  const recommendation = selectedBrand
-    ? recommendBestCardForCategory(walletCards, normalizedCategory)
-    : null;
-
-  const walletSummary = walletCards.length
-    ? walletCards.map((card) => card.name).join(", ")
-    : "No cards selected yet";
-
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.title}>TapTag Lab</Text>
         <Text style={styles.subtitle}>
-          Knowledge-layer debug screen and recommendation prototype
+          Knowledge-layer test screen for merchant and category recommendations.
         </Text>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Demo Recommendation</Text>
+          <Text style={styles.sectionTitle}>Recommendation Check</Text>
           <Text style={styles.helperText}>Wallet: {walletSummary}</Text>
 
           <View style={styles.pickerRow}>
@@ -163,6 +210,17 @@ export default function Lab() {
               Reason: {recommendation?.reason ?? "No recommendation available."}
             </Text>
           </View>
+
+          {!hasWalletCards ? (
+            <View style={styles.tipCard}>
+              <Text style={styles.tipTitle}>Add wallet cards first</Text>
+              <Text style={styles.tipText}>
+                TapTag&apos;s recommendation engine is ready, but it needs at
+                least one selected wallet card before it can choose a best
+                match.
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.section}>
@@ -322,6 +380,23 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     marginBottom: 10,
+  },
+  tipCard: {
+    backgroundColor: "#111822",
+    borderRadius: 10,
+    padding: 14,
+    marginTop: 2,
+  },
+  tipTitle: {
+    color: "#8ecfff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  tipText: {
+    color: "#cfe9ff",
+    fontSize: 14,
+    lineHeight: 20,
   },
   itemTitle: {
     color: "#fff",

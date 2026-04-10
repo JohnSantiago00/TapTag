@@ -25,7 +25,7 @@ export function recommendBestCardForCategory(
       bestCard: null,
       bestRate: 0,
       matchedCategory: normalizedCategory,
-      reason: "No demo wallet cards were available.",
+      reason: "No wallet cards were available.",
     };
   }
 

@@ -5,35 +5,39 @@ export default function Home() {
     <View style={styles.container}>
       <Text style={styles.title}>TapTag</Text>
       <Text style={styles.subtitle}>
-        A privacy-first rewards assistant for the cards you already carry.
+        A privacy-first wallet intelligence app for the cards you already own.
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What TapTag will do</Text>
+        <Text style={styles.cardTitle}>What TapTag is</Text>
         <Text style={styles.cardText}>
-          TapTag is being built to notice the merchant or category around you
-          and suggest the best card product in your wallet for better rewards.
+          TapTag helps you choose the best card product from your selected
+          wallet based on merchant and category context, without storing card
+          numbers, CVV, expiration dates, or bank credentials.
         </Text>
       </View>
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>What works now</Text>
         <Text style={styles.cardText}>
-          The app can sign users in and read the seeded Firestore knowledge
-          layer for cards, brands, and MCC mappings.
+          The app supports sign-in, seeded Firestore knowledge data, wallet
+          selection by card-product reference, Lab-based merchant testing,
+          foreground nearby checks, and an in-app nudge banner.
         </Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What is next</Text>
+        <Text style={styles.cardTitle}>What comes next</Text>
         <Text style={styles.cardText}>
-          Recommendation flow, wallet card-product selection, merchant
-          simulation, and live nudges are still coming in later phases.
+          Future slices may add muting, suppression, and richer user controls,
+          but background notifications, geofencing, analytics, and complex
+          reward-state logic are still intentionally deferred.
         </Text>
       </View>
 
       <Text style={styles.footer}>
-        Open the Lab tab to verify the current knowledge-layer foundation.
+        Use Wallet to choose your cards, Lab to inspect recommendations, and
+        Nearby to test foreground location checks.
       </Text>
     </View>
   );
