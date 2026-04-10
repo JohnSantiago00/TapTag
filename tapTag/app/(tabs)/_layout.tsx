@@ -23,7 +23,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="Cards"
         options={{
-          title: "My Cards",
+          title: "Wallet",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="card" color={color} size={size} />
           ),
@@ -33,18 +33,20 @@ export default function TabsLayout() {
         name="Lab"
         options={{
           title: "Lab",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flask" color={color} size={size} />
+          ),
         }}
       />
-
       <Tabs.Screen
-  name="Nearby"
-  options={{
-    title: "Nearby",
-    tabBarIcon: ({ color, size }) => (
-      <Ionicons name="map" color={color} size={size} />
-    ),
-  }}
-/>
+        name="Nearby"
+        options={{
+          title: "Nearby",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="map" color={color} size={size} />
+          ),
+        }}
+      />
 
       <Tabs.Screen
         name="Profile"
