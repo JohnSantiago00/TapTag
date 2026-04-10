@@ -1,16 +1,94 @@
-// scripts/seedKnowledgeLayer.js
+// seed/seedKnowledgeLayer.mjs
 import dotenv from 'dotenv';
-import { cert, initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { cert, initializeApp as initializeAdminApp } from 'firebase-admin/app';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { initializeApp as initializeClientApp } from 'firebase/app';
+import { doc, getFirestore as getClientFirestore, writeBatch } from 'firebase/firestore';
 
 dotenv.config();
 
-// --- Firebase Admin Init ---
-const serviceAccount = JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, 'utf8'));
-initializeApp({ credential: cert(serviceAccount) });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const repoRoot = path.resolve(__dirname, '..');
 
-const db = getFirestore();
+function resolveCredentialPath() {
+  const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (!rawPath) return null;
+  return path.isAbsolute(rawPath) ? rawPath : path.resolve(repoRoot, rawPath);
+}
+
+function createFirestoreWriter() {
+  const credentialPath = resolveCredentialPath();
+
+  if (credentialPath && fs.existsSync(credentialPath)) {
+    const serviceAccount = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
+    const app = initializeAdminApp({ credential: cert(serviceAccount) });
+    const db = getAdminFirestore(app);
+
+    console.log(`🔐 Using Firebase Admin credentials from ${credentialPath}`);
+
+    return {
+      mode: 'admin',
+      async seedCollection(collectionName, dataList) {
+        const batch = db.batch();
+        dataList.forEach((data) => {
+          const docRef = db.collection(collectionName).doc(data.id || String(data.mcc));
+          batch.set(docRef, { ...data, lastUpdated: new Date().toISOString() });
+        });
+        await batch.commit();
+        console.log(`✅ Seeded ${dataList.length} docs into '${collectionName}'`);
+      }
+    };
+  }
+
+  const firebaseConfig = {
+    apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+    authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+    measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  };
+
+  const requiredFirebaseConfig = Object.fromEntries(
+    Object.entries(firebaseConfig).filter(([key]) => key !== 'measurementId')
+  );
+
+  const missingConfig = Object.entries(requiredFirebaseConfig)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingConfig.length) {
+    throw new Error(
+      `No Firebase Admin credential file found, and client Firebase config is incomplete. Missing: ${missingConfig.join(', ')}`
+    );
+  }
+
+  const app = initializeClientApp(firebaseConfig, 'seed-client-fallback');
+  const db = getClientFirestore(app);
+
+  console.log('⚠️ Firebase Admin key not found. Falling back to client-SDK Firestore writes using .env config.');
+  console.log('⚠️ This requires Firestore rules to allow these writes from your local environment.');
+
+  return {
+    mode: 'client',
+    async seedCollection(collectionName, dataList) {
+      const batch = writeBatch(db);
+      dataList.forEach((data) => {
+        const docRef = doc(db, collectionName, data.id || String(data.mcc));
+        batch.set(docRef, { ...data, lastUpdated: new Date().toISOString() });
+      });
+      await batch.commit();
+      console.log(`✅ Seeded ${dataList.length} docs into '${collectionName}'`);
+    }
+  };
+}
+
+const firestoreWriter = createFirestoreWriter();
 
 const ALLOWED_NORMALIZED_CATEGORIES = [
   'Dining',
@@ -145,23 +223,14 @@ function auditKnowledgeLayer() {
 // FIRESTORE WRITE LOGIC
 // ------------------------------
 
-async function seedCollection(collectionName, dataList) {
-  const batch = db.batch();
-  dataList.forEach((data) => {
-    const docRef = db.collection(collectionName).doc(data.id || String(data.mcc));
-    batch.set(docRef, { ...data, lastUpdated: new Date().toISOString() });
-  });
-  await batch.commit();
-  console.log(`✅ Seeded ${dataList.length} docs into '${collectionName}'`);
-}
-
 (async () => {
   try {
     console.log('🚀 Starting Firestore Knowledge Layer Seeding...');
+    console.log(`🧰 Seeding mode: ${firestoreWriter.mode}`);
     auditKnowledgeLayer();
-    await seedCollection('cards', cards);
-    await seedCollection('brands', brands);
-    await seedCollection('mcc_map', mccMap);
+    await firestoreWriter.seedCollection('cards', cards);
+    await firestoreWriter.seedCollection('brands', brands);
+    await firestoreWriter.seedCollection('mcc_map', mccMap);
     console.log('🎉 All data seeded successfully!');
     process.exit(0);
   } catch (err) {
