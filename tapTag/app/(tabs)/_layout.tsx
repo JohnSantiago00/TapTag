@@ -29,6 +29,22 @@ export default function TabsLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="Lab"
+        options={{
+          title: "Lab",
+        }}
+      />
+
+      <Tabs.Screen
+  name="Nearby"
+  options={{
+    title: "Nearby",
+    tabBarIcon: ({ color, size }) => (
+      <Ionicons name="map" color={color} size={size} />
+    ),
+  }}
+/>
 
       <Tabs.Screen
         name="Profile"
