@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   FlatList,
   ActivityIndicator,
@@ -8,8 +8,10 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useFocusEffect } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
+import { trackUserEvent } from "../../src/services/firestore/events";
 import {
   addWalletCard,
   getUserWallet,
@@ -39,10 +41,12 @@ export default function Cards() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    loadWalletScreen();
-  }, [loadWalletScreen, user]);
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      loadWalletScreen();
+    }, [loadWalletScreen, user])
+  );
 
   const selectedIds = new Set(wallet.map((item) => item.id));
 
@@ -56,6 +60,22 @@ export default function Cards() {
       } else {
         await addWalletCard(user.uid, cardId);
       }
+
+      const nextSelectedIds = isSelected
+        ? wallet.filter((item) => item.id !== cardId).map((item) => item.id)
+        : [...wallet.map((item) => item.id), cardId];
+
+      await trackUserEvent(user.uid, {
+        eventType: "wallet_updated",
+        source: "wallet",
+        cardProductId: cardId,
+        cardProductIds: nextSelectedIds,
+        action: isSelected ? "removed" : "added",
+        metadata: {
+          selectedCount: nextSelectedIds.length,
+        },
+      });
+
       await loadWalletScreen();
     } finally {
       setSavingCardId(null);
@@ -80,11 +100,10 @@ export default function Cards() {
       <Text style={styles.title}>Wallet</Text>
 
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Privacy-first direction</Text>
+        <Text style={styles.infoTitle}>Privacy-first wallet</Text>
         <Text style={styles.infoText}>
-          TapTag is moving toward wallet selection by card product reference
-          only, without storing card numbers, CVV, expiration dates, or billing
-          details.
+          TapTag uses card-product references only, without storing card
+          numbers, CVV, expiration dates, or billing details.
         </Text>
       </View>
 
@@ -96,11 +115,10 @@ export default function Cards() {
         </Text>
       </View>
 
-      <Text style={styles.sectionTitle}>
-        Selected Cards ({wallet.length})
-      </Text>
+      <Text style={styles.sectionTitle}>Selected Wallet Cards ({wallet.length})</Text>
       <Text style={styles.helperText}>
-        Your Lab recommendations will use these selected card products.
+        Your Lab and Nearby recommendations will use these selected card
+        products.
       </Text>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}

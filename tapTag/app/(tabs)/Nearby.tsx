@@ -1,10 +1,11 @@
 import * as Location from "expo-location";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -12,6 +13,7 @@ import { useFocusEffect } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/firestore/brands";
 import { getAllCards } from "../../src/services/firestore/cards";
+import { trackUserEvent } from "../../src/services/firestore/events";
 import { getAllMccMappings } from "../../src/services/firestore/mccMap";
 import { getUserWallet } from "../../src/services/firestore/wallet";
 import { getDistance } from "../../src/utils/distance";
@@ -32,6 +34,10 @@ export default function Nearby() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("Checking your current location...");
   const [match, setMatch] = useState<NearbyMatch | null>(null);
+  const [isRecommendationOpen, setIsRecommendationOpen] = useState(false);
+  const [dismissedRecommendationKey, setDismissedRecommendationKey] =
+    useState<string | null>(null);
+  const lastTrackedRecommendationKey = useRef<string | null>(null);
 
   const loadNearbyRecommendation = useCallback(async () => {
     if (!user) return;
@@ -156,6 +162,109 @@ export default function Nearby() {
     }, [loadNearbyRecommendation, user])
   );
 
+  const recommendationKey = match
+    ? [
+        match.brand.id,
+        match.normalizedCategory,
+        match.recommendation.bestCard?.id ?? "none",
+        Math.round(match.distanceMeters),
+      ].join("|")
+    : null;
+
+  const nudgeText =
+    match?.recommendation.bestCard && match.normalizedCategory
+      ? `Use ${match.recommendation.bestCard.name} here for better ${match.normalizedCategory} rewards.`
+      : null;
+  const isDismissed =
+    recommendationKey !== null && dismissedRecommendationKey === recommendationKey;
+
+  useEffect(() => {
+    if (!recommendationKey) {
+      setIsRecommendationOpen(false);
+      return;
+    }
+
+    setIsRecommendationOpen(false);
+  }, [recommendationKey]);
+
+  useEffect(() => {
+    if (!user || !match?.recommendation.bestCard || !recommendationKey) {
+      return;
+    }
+
+    if (lastTrackedRecommendationKey.current === recommendationKey) {
+      return;
+    }
+
+    lastTrackedRecommendationKey.current = recommendationKey;
+
+    trackUserEvent(user.uid, {
+      eventType: "recommendation_shown",
+      source: "nearby",
+      brandId: match.brand.id,
+      brandName: match.brand.name,
+      recommendedCardProductId: match.recommendation.bestCard.id,
+      recommendedCardName: match.recommendation.bestCard.name,
+      normalizedCategory: match.normalizedCategory,
+      merchantMcc: match.brand.mcc,
+      distanceMeters: Math.round(match.distanceMeters),
+      metadata: {
+        rewardRate: match.recommendation.bestRate,
+      },
+    }).catch((trackingError) => {
+      console.error("Error tracking nearby recommendation event:", trackingError);
+    });
+  }, [match, recommendationKey, user]);
+
+  async function handleOpenRecommendation() {
+    if (!user || !match?.recommendation.bestCard) {
+      return;
+    }
+
+    setIsRecommendationOpen(true);
+
+    try {
+      await trackUserEvent(user.uid, {
+        eventType: "recommendation_opened",
+        source: "nearby",
+        brandId: match.brand.id,
+        brandName: match.brand.name,
+        recommendedCardProductId: match.recommendation.bestCard.id,
+        recommendedCardName: match.recommendation.bestCard.name,
+        normalizedCategory: match.normalizedCategory,
+        merchantMcc: match.brand.mcc,
+        distanceMeters: Math.round(match.distanceMeters),
+      });
+    } catch (trackingError) {
+      console.error("Error tracking nearby recommendation open:", trackingError);
+    }
+  }
+
+  async function handleDismissRecommendation() {
+    if (!user || !match?.recommendation.bestCard || !recommendationKey) {
+      return;
+    }
+
+    setDismissedRecommendationKey(recommendationKey);
+    setIsRecommendationOpen(false);
+
+    try {
+      await trackUserEvent(user.uid, {
+        eventType: "recommendation_dismissed",
+        source: "nearby",
+        brandId: match.brand.id,
+        brandName: match.brand.name,
+        recommendedCardProductId: match.recommendation.bestCard.id,
+        recommendedCardName: match.recommendation.bestCard.name,
+        normalizedCategory: match.normalizedCategory,
+        merchantMcc: match.brand.mcc,
+        distanceMeters: Math.round(match.distanceMeters),
+      });
+    } catch (trackingError) {
+      console.error("Error tracking nearby recommendation dismiss:", trackingError);
+    }
+  }
+
   if (!user) {
     return (
       <SafeAreaView style={styles.stateContainer}>
@@ -185,32 +294,47 @@ export default function Nearby() {
     );
   }
 
-  const nudgeText =
-    match?.recommendation.bestCard && match.normalizedCategory
-      ? `Use ${match.recommendation.bestCard.name} here for better ${match.normalizedCategory} rewards.`
-      : null;
-
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.title}>Nearby</Text>
         <Text style={styles.subtitle}>
-          Foreground location prototype using seeded merchant locations.
+          Foreground location checks using seeded merchant locations.
         </Text>
 
-        {nudgeText ? (
+        {nudgeText && !isDismissed ? (
           <View style={styles.nudgeCard}>
             <Text style={styles.nudgeLabel}>TapTag Nudge</Text>
             <Text style={styles.nudgeText}>{nudgeText}</Text>
+            <View style={styles.nudgeActions}>
+              <TouchableOpacity
+                style={styles.nudgeButtonPrimary}
+                onPress={handleOpenRecommendation}
+              >
+                <Text style={styles.nudgeButtonPrimaryText}>Open</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.nudgeButtonSecondary}
+                onPress={handleDismissRecommendation}
+              >
+                <Text style={styles.nudgeButtonSecondaryText}>Dismiss</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Status</Text>
           <Text style={styles.status}>{status}</Text>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={loadNearbyRecommendation}
+          >
+            <Text style={styles.refreshButtonText}>Refresh Nearby Check</Text>
+          </TouchableOpacity>
         </View>
 
-        {match ? (
+        {match && (!nudgeText || isRecommendationOpen) ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>Nearby Recommendation</Text>
             <Text style={styles.status}>Merchant: {match.brand.name}</Text>
@@ -293,11 +417,50 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     lineHeight: 22,
   },
+  nudgeActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 14,
+  },
+  nudgeButtonPrimary: {
+    backgroundColor: "#00131f",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  nudgeButtonPrimaryText: {
+    color: "#8ecfff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  nudgeButtonSecondary: {
+    backgroundColor: "#d9eefc",
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  nudgeButtonSecondaryText: {
+    color: "#24506b",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   cardTitle: {
     color: "#0af",
     fontSize: 16,
     fontWeight: "600",
     marginBottom: 8,
+  },
+  refreshButton: {
+    marginTop: 12,
+    backgroundColor: "#1a1a1a",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  refreshButtonText: {
+    color: "#8ecfff",
+    fontSize: 14,
+    fontWeight: "600",
   },
   status: {
     color: "#ddd",
