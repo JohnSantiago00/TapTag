@@ -11,11 +11,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/firestore/brands";
-import { getAllCards, KnowledgeCard } from "../../src/services/firestore/cards";
-import {
-  getAllMccMappings,
-  MccMapping,
-} from "../../src/services/firestore/mccMap";
+import { getAllCards } from "../../src/services/firestore/cards";
+import { getAllMccMappings } from "../../src/services/firestore/mccMap";
 import { getUserWallet } from "../../src/services/firestore/wallet";
 import { getDistance } from "../../src/utils/distance";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
@@ -36,23 +33,7 @@ export default function Nearby() {
   const [status, setStatus] = useState("Checking your current location...");
   const [match, setMatch] = useState<NearbyMatch | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-
-      let locationSubscription: Location.LocationSubscription | undefined;
-
-      (async () => {
-        locationSubscription = await loadNearbyRecommendation();
-      })();
-
-      return () => {
-        locationSubscription?.remove();
-      };
-    }, [user?.uid])
-  );
-
-  async function loadNearbyRecommendation() {
+  const loadNearbyRecommendation = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -157,7 +138,23 @@ export default function Nearby() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+
+      let locationSubscription: Location.LocationSubscription | undefined;
+
+      (async () => {
+        locationSubscription = await loadNearbyRecommendation();
+      })();
+
+      return () => {
+        locationSubscription?.remove();
+      };
+    }, [loadNearbyRecommendation, user])
+  );
 
   if (!user) {
     return (

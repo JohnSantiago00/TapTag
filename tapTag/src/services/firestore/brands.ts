@@ -19,14 +19,27 @@ export interface Brand {
 function normalizeCommonLocations(data: any): BrandLocation[] {
   if (Array.isArray(data.commonLocations)) {
     return data.commonLocations
-      .map((location: any) => ({
-        lat: Number(location?.lat),
-        lon: Number(location?.lon),
-        address:
-          typeof location?.address === "string" ? location.address : undefined,
-      }))
+      .map((location: unknown) => {
+        const rawLocation =
+          typeof location === "object" && location !== null
+            ? (location as {
+                lat?: unknown;
+                lon?: unknown;
+                address?: unknown;
+              })
+            : undefined;
+
+        return {
+          lat: Number(rawLocation?.lat),
+          lon: Number(rawLocation?.lon),
+          address:
+            typeof rawLocation?.address === "string"
+              ? rawLocation.address
+              : undefined,
+        };
+      })
       .filter(
-        (location) =>
+        (location: BrandLocation) =>
           Number.isFinite(location.lat) && Number.isFinite(location.lon)
       );
   }

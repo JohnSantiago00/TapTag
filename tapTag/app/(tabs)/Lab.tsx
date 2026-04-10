@@ -29,19 +29,7 @@ export default function Lab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    loadKnowledgeLayer();
-  }, [user?.uid]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-      loadKnowledgeLayer();
-    }, [user?.uid])
-  );
-
-  async function loadKnowledgeLayer() {
+  const loadKnowledgeLayer = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -67,7 +55,19 @@ export default function Lab() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadKnowledgeLayer();
+  }, [loadKnowledgeLayer, user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) return;
+      loadKnowledgeLayer();
+    }, [loadKnowledgeLayer, user])
+  );
 
   if (!user) {
     return (
