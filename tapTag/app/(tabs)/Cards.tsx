@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   FlatList,
   ActivityIndicator,
@@ -24,12 +24,7 @@ export default function Cards() {
   const [loading, setLoading] = useState(true);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!user) return;
-    loadWalletScreen();
-  }, [user?.uid]);
-
-  async function loadWalletScreen() {
+  const loadWalletScreen = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
@@ -42,7 +37,12 @@ export default function Cards() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    loadWalletScreen();
+  }, [loadWalletScreen, user]);
 
   const selectedIds = new Set(wallet.map((item) => item.id));
 
