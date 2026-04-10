@@ -55,6 +55,9 @@ export default function Login() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Welcome Back</Text>
+      <Text style={styles.subtitle}>
+        Sign in to your privacy-first wallet intelligence workspace.
+      </Text>
 
       <TextInput
         style={styles.input}
@@ -110,7 +113,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: "#fff",
     fontWeight: "700",
-    marginBottom: 30,
+    marginBottom: 10,
+  },
+  subtitle: {
+    color: "#aaa",
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+    marginBottom: 24,
   },
   input: {
     width: "100%",

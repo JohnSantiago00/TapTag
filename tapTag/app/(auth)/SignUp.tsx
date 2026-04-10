@@ -68,6 +68,9 @@ export default function SignupScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
+      <Text style={styles.subtitle}>
+        Set up TapTag with email only. No card numbers, CVV, or bank logins.
+      </Text>
 
       {/* Email Input */}
       <TextInput
@@ -123,7 +126,14 @@ const styles = StyleSheet.create({
     fontSize: 28,
     color: "#fff",
     fontWeight: "700",
-    marginBottom: 30,
+    marginBottom: 10,
+  },
+  subtitle: {
+    color: "#aaa",
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+    marginBottom: 24,
   },
   input: {
     width: "100%",

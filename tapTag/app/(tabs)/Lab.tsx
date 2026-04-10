@@ -165,8 +165,15 @@ export default function Lab() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content}>
         <Text style={styles.title}>TapTag Lab</Text>
         <Text style={styles.subtitle}>
-          Knowledge-layer test screen for merchant and category recommendations.
+          Guided merchant testing for the recommendation engine.
         </Text>
+
+        <View style={styles.calloutCard}>
+          <Text style={styles.calloutTitle}>How to use this screen</Text>
+          <Text style={styles.calloutText}>1. Make sure your Wallet has at least one selected card.</Text>
+          <Text style={styles.calloutText}>2. Tap a merchant below.</Text>
+          <Text style={styles.calloutText}>3. Confirm the recommended card and explanation make sense.</Text>
+        </View>
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Recommendation Check</Text>
@@ -192,22 +199,17 @@ export default function Lab() {
             })}
           </View>
 
-          <View style={styles.itemCard}>
-            <Text style={styles.itemBody}>
-              Merchant: {selectedBrand?.name ?? "None"}
+          <View style={styles.resultCard}>
+            <Text style={styles.resultLabel}>Merchant</Text>
+            <Text style={styles.resultValue}>{selectedBrand?.name ?? "None"}</Text>
+            <Text style={styles.resultLabel}>Best Card</Text>
+            <Text style={styles.resultValue}>{recommendation?.bestCard?.name ?? "None"}</Text>
+            <Text style={styles.resultLabel}>Why</Text>
+            <Text style={styles.resultReason}>
+              {recommendation?.reason ?? "No recommendation available."}
             </Text>
-            <Text style={styles.itemBody}>
-              MCC: {selectedBrand?.mcc ?? "None"}
-            </Text>
-            <Text style={styles.itemBody}>
-              Normalized Category:{" "}
-              {selectedMccMapping?.normalizedCategory ?? "None"}
-            </Text>
-            <Text style={styles.itemBody}>
-              Best Card: {recommendation?.bestCard?.name ?? "None"}
-            </Text>
-            <Text style={styles.itemBody}>
-              Reason: {recommendation?.reason ?? "No recommendation available."}
+            <Text style={styles.resultMeta}>
+              MCC {selectedBrand?.mcc ?? "None"} • Category {selectedMccMapping?.normalizedCategory ?? "None"}
             </Text>
           </View>
 
@@ -221,6 +223,13 @@ export default function Lab() {
               </Text>
             </View>
           ) : null}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Knowledge Layer Snapshot</Text>
+          <Text style={styles.helperText}>
+            This is still available for debugging, but the primary tester flow is the recommendation result above.
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -374,6 +383,53 @@ const styles = StyleSheet.create({
   },
   pillTextActive: {
     color: "#000",
+  },
+  calloutCard: {
+    backgroundColor: "#111822",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  calloutTitle: {
+    color: "#8ecfff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  calloutText: {
+    color: "#cfe9ff",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  resultCard: {
+    backgroundColor: "#0f1620",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  resultLabel: {
+    color: "#8ecfff",
+    fontSize: 12,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  resultValue: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  resultReason: {
+    color: "#ddd",
+    fontSize: 15,
+    lineHeight: 21,
+    marginBottom: 10,
+  },
+  resultMeta: {
+    color: "#888",
+    fontSize: 13,
+    lineHeight: 18,
   },
   itemCard: {
     backgroundColor: "#111",

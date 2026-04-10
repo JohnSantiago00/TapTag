@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
   ActivityIndicator,
@@ -48,7 +48,14 @@ export default function Cards() {
     }, [loadWalletScreen, user])
   );
 
-  const selectedIds = new Set(wallet.map((item) => item.id));
+  const selectedIds = useMemo(
+    () => new Set(wallet.map((item) => item.id)),
+    [wallet]
+  );
+  const selectedCards = useMemo(
+    () => cards.filter((card) => selectedIds.has(card.id)),
+    [cards, selectedIds]
+  );
 
   async function handleToggleWalletCard(cardId: string, isSelected: boolean) {
     if (!user) return;
@@ -120,6 +127,15 @@ export default function Cards() {
         Your Lab and Nearby recommendations will use these selected card
         products.
       </Text>
+
+      <View style={styles.summaryCard}>
+        <Text style={styles.summaryTitle}>Current wallet</Text>
+        <Text style={styles.summaryText}>
+          {selectedCards.length
+            ? selectedCards.map((card) => card.name).join(", ")
+            : "No wallet cards selected yet."}
+        </Text>
+      </View>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}
 
@@ -242,6 +258,23 @@ const styles = StyleSheet.create({
     color: "#f55",
     fontSize: 14,
     fontWeight: "600",
+  },
+  summaryCard: {
+    backgroundColor: "#111822",
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 14,
+  },
+  summaryTitle: {
+    color: "#8ecfff",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  summaryText: {
+    color: "#cfe9ff",
+    fontSize: 14,
+    lineHeight: 20,
   },
   emptyCard: {
     backgroundColor: "#111",

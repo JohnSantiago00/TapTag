@@ -177,6 +177,7 @@ export default function Nearby() {
       : null;
   const isDismissed =
     recommendationKey !== null && dismissedRecommendationKey === recommendationKey;
+  const showGuidanceCard = !match || isDismissed;
 
   useEffect(() => {
     if (!recommendationKey) {
@@ -302,6 +303,13 @@ export default function Nearby() {
           Foreground location checks using seeded merchant locations.
         </Text>
 
+        <View style={styles.guidanceCard}>
+          <Text style={styles.guidanceTitle}>How to test Nearby</Text>
+          <Text style={styles.guidanceText}>1. Make sure your Wallet has at least one selected card.</Text>
+          <Text style={styles.guidanceText}>2. Allow location permission when asked.</Text>
+          <Text style={styles.guidanceText}>3. Use Refresh Nearby Check to retry after moving or changing state.</Text>
+        </View>
+
         {nudgeText && !isDismissed ? (
           <View style={styles.nudgeCard}>
             <Text style={styles.nudgeLabel}>TapTag Nudge</Text>
@@ -333,6 +341,17 @@ export default function Nearby() {
             <Text style={styles.refreshButtonText}>Refresh Nearby Check</Text>
           </TouchableOpacity>
         </View>
+
+        {showGuidanceCard ? (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>What to do next</Text>
+            <Text style={styles.status}>
+              {isDismissed
+                ? "You dismissed the current nudge. Refresh Nearby Check to generate a fresh recommendation."
+                : "Nearby will show a recommendation when TapTag finds a seeded merchant close enough to your current location."}
+            </Text>
+          </View>
+        ) : null}
 
         {match && (!nudgeText || isRecommendationOpen) ? (
           <View style={styles.card}>
@@ -391,6 +410,24 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "700",
     marginBottom: 8,
+  },
+  guidanceCard: {
+    backgroundColor: "#111822",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+  },
+  guidanceTitle: {
+    color: "#8ecfff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 8,
+  },
+  guidanceText: {
+    color: "#cfe9ff",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 4,
   },
   card: {
     backgroundColor: "#111",
