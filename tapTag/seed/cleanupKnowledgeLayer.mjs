@@ -7,12 +7,23 @@ import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { initializeApp as initializeClientApp } from 'firebase/app';
 import { doc, getFirestore as getClientFirestore, writeBatch } from 'firebase/firestore';
 
+/*
+  File role:
+  Removes a small list of stale prototype docs that no longer belong in the
+  current knowledge model.
+
+  Important safety property:
+  This is not a general wipe script. It only deletes named known-old records.
+*/
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
+// Cleanup only targets known stale docs from earlier prototypes so we do not
+// accidentally remove current seeded knowledge data.
 const DOCS_TO_DELETE = {
   cards: ['chase-freedom'],
   brands: ['target'],
@@ -25,10 +36,13 @@ function resolveCredentialPath() {
   return path.isAbsolute(rawPath) ? rawPath : path.resolve(repoRoot, rawPath);
 }
 
+// Mirrors the seeder's admin-or-client fallback so cleanup works in the same
+// local environments as seeding.
 function createFirestoreCleaner() {
   const credentialPath = resolveCredentialPath();
+  const forceClientMode = process.env.TAPTAG_FORCE_CLIENT_FIREBASE === '1';
 
-  if (credentialPath && fs.existsSync(credentialPath)) {
+  if (!forceClientMode && credentialPath && fs.existsSync(credentialPath)) {
     const serviceAccount = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
     const app = initializeAdminApp({ credential: cert(serviceAccount) });
     const db = getAdminFirestore(app);
@@ -40,6 +54,8 @@ function createFirestoreCleaner() {
       async deleteDocs(collectionName, ids) {
         if (!ids.length) return;
 
+        // Batch deletion keeps the cleanup operation consistent with the seeder
+        // and reduces noisy one-by-one writes.
         const batch = db.batch();
         ids.forEach((id) => {
           const ref = db.collection(collectionName).doc(id);
@@ -79,7 +95,11 @@ function createFirestoreCleaner() {
   const app = initializeClientApp(firebaseConfig, 'cleanup-client-fallback');
   const db = getClientFirestore(app);
 
-  console.log('⚠️ Firebase Admin key not found. Falling back to client-SDK Firestore deletes using .env config.');
+  if (forceClientMode) {
+    console.log('⚠️ TAPTAG_FORCE_CLIENT_FIREBASE=1 set. Skipping Firebase Admin credentials and using client-SDK Firestore deletes.');
+  } else {
+    console.log('⚠️ Firebase Admin key not found. Falling back to client-SDK Firestore deletes using .env config.');
+  }
   console.log('⚠️ This requires Firestore rules to allow these deletes from your local environment.');
 
   return {

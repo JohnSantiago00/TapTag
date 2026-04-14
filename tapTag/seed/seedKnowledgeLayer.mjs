@@ -8,12 +8,22 @@ import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 import { initializeApp as initializeClientApp } from 'firebase/app';
 import { doc, getFirestore as getClientFirestore, writeBatch } from 'firebase/firestore';
 
+/*
+  File role:
+  Seeds the global knowledge layer used by Wallet, Lab, and Nearby.
+
+  This script is intentionally separate from the app runtime because seeding is
+  an environment/setup concern, not a user-facing feature.
+*/
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 
+// Prefer Admin credentials when present, but allow local development to keep
+// moving with client-SDK writes if serviceAccountKey.json is missing.
 function resolveCredentialPath() {
   const rawPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (!rawPath) return null;
@@ -22,8 +32,9 @@ function resolveCredentialPath() {
 
 function createFirestoreWriter() {
   const credentialPath = resolveCredentialPath();
+  const forceClientMode = process.env.TAPTAG_FORCE_CLIENT_FIREBASE === '1';
 
-  if (credentialPath && fs.existsSync(credentialPath)) {
+  if (!forceClientMode && credentialPath && fs.existsSync(credentialPath)) {
     const serviceAccount = JSON.parse(fs.readFileSync(credentialPath, 'utf8'));
     const app = initializeAdminApp({ credential: cert(serviceAccount) });
     const db = getAdminFirestore(app);
@@ -33,6 +44,8 @@ function createFirestoreWriter() {
     return {
       mode: 'admin',
       async seedCollection(collectionName, dataList) {
+        // Batch writes keep seeding fast and reduce the chance of partial writes
+        // when multiple docs belong to the same logical dataset.
         const batch = db.batch();
         dataList.forEach((data) => {
           const docRef = db.collection(collectionName).doc(data.id || String(data.mcc));
@@ -71,12 +84,17 @@ function createFirestoreWriter() {
   const app = initializeClientApp(firebaseConfig, 'seed-client-fallback');
   const db = getClientFirestore(app);
 
-  console.log('⚠️ Firebase Admin key not found. Falling back to client-SDK Firestore writes using .env config.');
+  if (forceClientMode) {
+    console.log('⚠️ TAPTAG_FORCE_CLIENT_FIREBASE=1 set. Skipping Firebase Admin credentials and using client-SDK Firestore writes.');
+  } else {
+    console.log('⚠️ Firebase Admin key not found. Falling back to client-SDK Firestore writes using .env config.');
+  }
   console.log('⚠️ This requires Firestore rules to allow these writes from your local environment.');
 
   return {
     mode: 'client',
     async seedCollection(collectionName, dataList) {
+      // Same batching idea as admin mode, just using the client SDK API.
       const batch = writeBatch(db);
       dataList.forEach((data) => {
         const docRef = doc(db, collectionName, data.id || String(data.mcc));
@@ -90,6 +108,8 @@ function createFirestoreWriter() {
 
 const firestoreWriter = createFirestoreWriter();
 
+// Keeping normalized categories constrained protects the thin-slice
+// recommendation engine from drift in seed data.
 const ALLOWED_NORMALIZED_CATEGORIES = [
   'Dining',
   'Groceries',
@@ -104,6 +124,9 @@ const ALLOWED_NORMALIZED_CATEGORIES = [
 // ------------------------------
 // KNOWLEDGE LAYER SEED DATA
 // ------------------------------
+
+// These arrays are the canonical thin-slice seed dataset for the current app.
+// They are intentionally small so the whole recommendation loop stays readable.
 
 // Global Cards
 const cards = [
@@ -173,6 +196,7 @@ function assert(condition, message) {
   }
 }
 
+// These validators make seed problems fail fast before bad docs reach Firestore.
 function validateCards(cardsToValidate) {
   cardsToValidate.forEach((card) => {
     assert(card.id, `Card is missing id: ${JSON.stringify(card)}`);
@@ -212,6 +236,8 @@ function validateMccMap(mccMappingsToValidate) {
 }
 
 function auditKnowledgeLayer() {
+  // Audit all datasets before any write begins so we fail fast and do not leave
+  // Firestore partially updated with inconsistent seed shapes.
   validateCards(cards);
   validateBrands(brands);
   validateMccMap(mccMap);

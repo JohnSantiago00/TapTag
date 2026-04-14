@@ -8,6 +8,11 @@
     "ios": "expo run:ios",
     "web": "./scripts/start-expo.sh --web",
     "start:tunnel": "npx expo start --tunnel",
+    "setup": "node ./scripts/setup.mjs",
+    "doctor": "node ./scripts/doctor.mjs",
+    "first-run": "node ./scripts/first-run.mjs",
+    "bootstrap": "npm run doctor && npm run seed:knowledge",
+    "bootstrap:client": "node ./scripts/bootstrap-client.mjs",
     "seed:knowledge": "node ./seed/seedKnowledgeLayer.mjs",
     "cleanup:knowledge": "node ./seed/cleanupKnowledgeLayer.mjs",
     "lint": "eslint ."

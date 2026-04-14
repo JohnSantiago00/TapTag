@@ -1,0 +1,18 @@
+# Root helper package
+node_modules/
+
+# App-local dependencies and caches
+/tapTag/node_modules/
+/tapTag/.expo/
+/tapTag/dist/
+/tapTag/web-build/
+
+# Local secrets and config
+/tapTag/.env
+/tapTag/.env.*
+!/tapTag/.env.example
+/.firebaserc
+/tapTag/seed/serviceAccountKey.json
+
+# OS/editor noise
+.DS_Store
