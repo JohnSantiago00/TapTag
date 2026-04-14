@@ -24,6 +24,19 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+/*
+  File role:
+  This screen combines user-facing profile information with an internal-style QA
+  surface for verifying event tracking and recent app behavior.
+
+  Why that blend is okay right now:
+  The product is still in beta, so giving testers visibility into what the app
+  just recorded is more useful than hiding everything behind external tooling.
+*/
+
+// Profile is the lightweight user/settings and QA verification screen. It lets
+// a tester confirm saved profile state, wallet count, and recent tracked events
+// without opening Firebase.
 export default function Profile() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -34,6 +47,8 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
+  // Profile data spans three sources, user profile doc, wallet refs, and recent
+  // events. Loading them together keeps the screen coherent.
   const loadProfile = useCallback(async () => {
     if (!user) return;
 
@@ -62,10 +77,15 @@ export default function Profile() {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
+
+      // Reload on focus so Wallet/Lab/Nearby activity shows up immediately when
+      // the tester comes back here.
       loadProfile();
     }, [loadProfile, user])
   );
 
+  // Save is intentionally narrow, only displayName is editable today. The rest
+  // of the profile shape is managed by product defaults.
   const handleSave = async () => {
     if (!user) return;
 
@@ -87,6 +107,8 @@ export default function Profile() {
     await signOut(auth);
   };
 
+  // These counts are intentionally derived on the client because this is a tiny
+  // beta QA surface, not a dashboard backed by aggregate analytics.
   const eventCounts = recentEvents.reduce(
     (counts, event) => {
       counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
@@ -105,6 +127,7 @@ export default function Profile() {
     ? `Tracking active. Last event: ${latestEvent.eventType} from ${latestEvent.source}.`
     : "Tracking active, but no events have been recorded yet.";
 
+  // This formatter turns raw event docs into short human-readable summaries.
   function formatEventSummary(event: TapTagEvent) {
     switch (event.eventType) {
       case "wallet_updated":
@@ -222,6 +245,8 @@ export default function Profile() {
           </Text>
           <View style={styles.eventsList}>
             {recentEvents.length ? (
+              // This is intentionally chronological QA feedback, not a deeply
+              // modeled audit log UI.
               recentEvents.map((event) => (
                 <View key={event.id ?? `${event.eventType}-${event.occurredAt}`} style={styles.eventRow}>
                   <Text style={styles.eventTitle}>{event.eventType}</Text>

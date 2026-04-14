@@ -19,6 +19,18 @@ import {
   WalletCardRef,
 } from "../../src/services/firestore/wallet";
 
+/*
+  File role:
+  Wallet is the setup step that makes the rest of TapTag meaningful.
+
+  Mental model:
+  global card products live in the knowledge layer, but this screen stores which
+  of those products the current user actually has access to.
+*/
+
+// Wallet is where the user tells TapTag which card products they actually own.
+// The screen intentionally works with seeded product refs only, not real card
+// credentials.
 export default function Cards() {
   const { user } = useAuth();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
@@ -26,6 +38,8 @@ export default function Cards() {
   const [loading, setLoading] = useState(true);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
 
+  // This loader combines global knowledge cards with user-specific wallet refs
+  // so the UI can show both the available catalog and the selected subset.
   const loadWalletScreen = useCallback(async () => {
     if (!user) return;
     setLoading(true);
@@ -44,19 +58,28 @@ export default function Cards() {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
+
+      // Refresh on focus so a tester coming back from another tab sees the
+      // latest wallet state without needing a manual reload button.
       loadWalletScreen();
     }, [loadWalletScreen, user])
   );
 
+  // We derive a Set first because membership checks happen repeatedly while
+  // rendering the list and summary.
   const selectedIds = useMemo(
     () => new Set(wallet.map((item) => item.id)),
     [wallet]
   );
+
+  // selectedCards lets the summary show friendly names instead of raw ids.
   const selectedCards = useMemo(
     () => cards.filter((card) => selectedIds.has(card.id)),
     [cards, selectedIds]
   );
 
+  // Toggling a wallet card updates Firestore first, then records a lightweight
+  // event so Profile can show recent activity and QA can verify behavior.
   async function handleToggleWalletCard(cardId: string, isSelected: boolean) {
     if (!user) return;
 
@@ -151,6 +174,8 @@ export default function Cards() {
         <FlatList
           data={cards}
           keyExtractor={(item) => item.id}
+          // FlatList is used because this screen is conceptually a catalog of
+          // card products, and it scales better than mapping a raw array.
           renderItem={({ item }) => (
             <View style={styles.cardRow}>
               <View style={styles.cardCopy}>

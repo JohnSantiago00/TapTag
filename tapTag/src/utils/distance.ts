@@ -1,5 +1,7 @@
-// src/utils/distance.ts
+// Haversine distance in meters. Nearby uses this to compare the device location
+// against seeded merchant coordinates without introducing any mapping SDK.
 export function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  // Earth radius in meters, standard value used in Haversine calculations.
   const R = 6371e3; // Earth's radius in meters
   const φ1 = (lat1 * Math.PI) / 180;
   const φ2 = (lat2 * Math.PI) / 180;

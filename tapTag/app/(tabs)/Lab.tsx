@@ -20,6 +20,20 @@ import { trackUserEvent } from "../../src/services/firestore/events";
 import { getUserWallet, WalletCardRef } from "../../src/services/firestore/wallet";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
+/*
+  File role:
+  Lab is the deterministic version of the TapTag loop.
+
+  Mental model:
+  pick a brand -> resolve MCC -> resolve normalizedCategory -> compare against
+  selected wallet cards -> explain the best match.
+
+  This screen is intentionally half product surface, half debugging surface.
+*/
+
+// Lab is the controlled recommendation workbench. It lets a tester choose a
+// seeded merchant and inspect the recommendation logic without needing real
+// location context.
 export default function Lab() {
   const { user } = useAuth();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
@@ -31,6 +45,9 @@ export default function Lab() {
   const [error, setError] = useState<string | null>(null);
   const lastTrackedRecommendationKey = useRef<string | null>(null);
 
+  // The screen depends on four data sources, cards, brands, MCC mappings, and
+  // the user's wallet. They are loaded together because the recommendation view
+  // is only meaningful when all four are in sync.
   const loadKnowledgeLayer = useCallback(async () => {
     if (!user) return;
 
@@ -67,10 +84,15 @@ export default function Lab() {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
+
+      // Reload on focus so returning from Wallet immediately refreshes the cards
+      // available to the recommendation engine.
       loadKnowledgeLayer();
     }, [loadKnowledgeLayer, user])
   );
 
+  // These derived values are the actual TapTag decision chain. Reading this
+  // block top-to-bottom is the fastest way to understand the product logic.
   const walletCardIds = new Set(wallet.map((item) => item.id));
   const walletCards = cards.filter((card) => walletCardIds.has(card.id));
   const selectedBrand =
@@ -86,6 +108,9 @@ export default function Lab() {
     ? walletCards.map((card) => card.name).join(", ")
     : "No cards selected yet";
   const hasWalletCards = walletCards.length > 0;
+
+  // The tracking key includes brand, category, chosen card, and wallet shape so
+  // analytics fire only when the effective recommendation truly changes.
   const recommendationKey = [
     selectedBrand?.id ?? "none",
     normalizedCategory,
@@ -93,6 +118,8 @@ export default function Lab() {
     walletCards.map((card) => card.id).sort().join(","),
   ].join("|");
 
+  // recommendation_shown is deduped with a stable key so the app does not flood
+  // events every time React re-renders the same effective recommendation.
   useEffect(() => {
     if (!user || !selectedBrand || !recommendation?.bestCard || !hasWalletCards) {
       return;
@@ -180,6 +207,8 @@ export default function Lab() {
           <Text style={styles.helperText}>Wallet: {walletSummary}</Text>
 
           <View style={styles.pickerRow}>
+            {/* These pills are a deliberately simple stand-in for merchant search.
+                They keep testing deterministic while the product slice stays thin. */}
             {brands.map((brand) => {
               const isSelected = brand.id === selectedBrand?.id;
 
@@ -234,6 +263,8 @@ export default function Lab() {
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Cards ({cards.length})</Text>
+          {/* The sections below expose raw seeded data so recommendation results
+              can be explained back to the underlying knowledge layer. */}
           {cards.map((card) => (
             <View key={card.id} style={styles.itemCard}>
               <Text style={styles.itemTitle}>

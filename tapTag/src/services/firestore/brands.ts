@@ -1,6 +1,14 @@
 import { collection, getDocs } from "firebase/firestore";
 import { db } from "../../config/firebase";
 
+/*
+  File role:
+  Reads merchant-brand knowledge from Firestore.
+
+  A brand here is a merchant identity plus its default MCC and a small set of
+  seeded sample locations for testing Nearby.
+*/
+
 export interface BrandLocation {
   lat: number;
   lon: number;
@@ -16,6 +24,9 @@ export interface Brand {
   commonLocations: BrandLocation[];
 }
 
+// Older brand docs used a single coordinates object, newer docs use
+// commonLocations. This helper supports both so seeded data can evolve without
+// breaking the app.
 function normalizeCommonLocations(data: any): BrandLocation[] {
   if (Array.isArray(data.commonLocations)) {
     return data.commonLocations
@@ -56,11 +67,14 @@ function normalizeCommonLocations(data: any): BrandLocation[] {
   return [];
 }
 
+// A Brand is merchant identity, for example Starbucks or Amazon, not a single
+// physical store.
 export async function getAllBrands(): Promise<Brand[]> {
   try {
     const ref = collection(db, "brands");
     const snapshot = await getDocs(ref);
 
+    // The app currently reads the entire small seeded brand set at once.
     const brands = snapshot.docs.map((doc) => {
       const data = doc.data();
 
