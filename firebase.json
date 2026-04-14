@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "rules": "tapTag/firestore.rules",
+    "indexes": "tapTag/firestore.indexes.json"
+  }
+}
