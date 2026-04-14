@@ -12,6 +12,15 @@ import {
 import { auth } from "../../src/config/firebase";
 import { validateEmail, validatePassword } from "../../src/utils/validation";
 
+/*
+  File role:
+  Login is the lightweight auth entry point for returning users.
+
+  Why it stays simple:
+  Authentication is not the product differentiator here. The code is written to
+  be readable, calm, and reliable rather than feature-rich.
+*/
+
 export default function Login() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -19,6 +28,8 @@ export default function Login() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // This handler keeps login logic in the screen because the behavior is small,
+  // local, and tightly coupled to screen status copy.
   const handleLogin = async () => {
     if (!validateEmail(email)) return setStatus("Please enter a valid email.");
     if (!validatePassword(password))
@@ -38,6 +49,8 @@ export default function Login() {
     }
   };
 
+  // Firebase error codes are mapped to calmer user-facing messages so the UI
+  // stays understandable without exposing raw SDK wording.
   const getFirebaseErrorMessage = (code: string): string => {
     switch (code) {
       case "auth/invalid-credential":
@@ -64,6 +77,8 @@ export default function Login() {
         placeholder="Email"
         placeholderTextColor="#aaa"
         value={email}
+        // Keeping the inputs controlled makes validation/status behavior easy
+        // to reason about.
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"

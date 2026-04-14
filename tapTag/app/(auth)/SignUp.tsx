@@ -13,6 +13,12 @@ import { auth } from "../../src/config/firebase";
 import { upsertUserProfile } from "../../src/services/firestore/userProfile";
 import { validateEmail, validatePassword } from "../../src/utils/validation";
 
+/*
+  File role:
+  SignUp creates the minimal TapTag account, email/password auth plus a
+  matching user profile doc with privacy-first defaults.
+*/
+
 export default function SignupScreen() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -20,6 +26,8 @@ export default function SignupScreen() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Sign up does two things, create Firebase Auth user and ensure the matching
+  // Firestore profile exists with TapTag defaults.
   const handleSignUp = async () => {
     if (!validateEmail(email)) return setStatus("Please enter a valid email.");
     if (!validatePassword(password))
@@ -34,6 +42,9 @@ export default function SignupScreen() {
         email.trim(),
         password
       );
+
+      // Firebase returns the new auth user immediately. We then mirror that user
+      // into Firestore so the rest of the app has a profile document to read.
       const user = userCredential.user;
 
       await upsertUserProfile(user.uid, {
@@ -50,6 +61,7 @@ export default function SignupScreen() {
     }
   };
 
+  // Friendly error translation, same idea as Login.tsx.
   const getFirebaseErrorMessage = (code: string): string => {
     switch (code) {
       case "auth/email-already-in-use":
@@ -72,7 +84,6 @@ export default function SignupScreen() {
         Set up TapTag with email only. No card numbers, CVV, or bank logins.
       </Text>
 
-      {/* Email Input */}
       <TextInput
         style={styles.input}
         placeholder="Email"
@@ -83,7 +94,6 @@ export default function SignupScreen() {
         keyboardType="email-address"
       />
 
-      {/* Password Input */}
       <TextInput
         style={styles.input}
         placeholder="Password"

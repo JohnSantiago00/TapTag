@@ -3,7 +3,23 @@ import { getApp, getApps, initializeApp } from "firebase/app";
 import { getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// --- Firebase Configuration ---
+/*
+  File role:
+  This module is the single runtime bootstrap for Firebase in the Expo app.
+
+  Why it exists:
+  - screens should not each initialize Firebase themselves
+  - auth persistence should survive app restarts
+  - Firestore and Auth should share one app instance
+
+  Architectural boundary:
+  - this file is client-side only
+  - anything requiring elevated/admin credentials belongs in the seed scripts,
+    not here
+*/
+
+// Firebase config is sourced from Expo public env vars because the app runs on
+// the client. Sensitive admin behavior lives only in the seed/cleanup scripts.
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -14,15 +30,19 @@ const firebaseConfig = {
   measurementId: process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// --- Initialize Firebase ---
 const hasApp = getApps().length > 0;
 const app = hasApp ? getApp() : initializeApp(firebaseConfig);
 
+// Expo + React Native persistence support can be messy across SDK versions.
+// This local wrapper avoids depending on a package export that has shifted in
+// the past and gives auth durable AsyncStorage-backed sessions.
 function createReactNativePersistence(storage: typeof AsyncStorage) {
   return class {
     static type = "LOCAL";
     readonly type = "LOCAL";
 
+    // Firebase calls this to decide whether persistence can be used on the
+    // current platform/runtime. We probe AsyncStorage with a tiny write/remove.
     async _isAvailable() {
       try {
         if (!storage) {
@@ -38,10 +58,12 @@ function createReactNativePersistence(storage: typeof AsyncStorage) {
     }
 
     _set(key: string, value: unknown) {
+      // Firebase gives us arbitrary JSON-serializable auth state.
       return storage.setItem(key, JSON.stringify(value));
     }
 
     async _get<T>(key: string): Promise<T | null> {
+      // Parse stored auth payload back into the shape Firebase expects.
       const json = await storage.getItem(key);
       return json ? (JSON.parse(json) as T) : null;
     }
@@ -50,6 +72,8 @@ function createReactNativePersistence(storage: typeof AsyncStorage) {
       return storage.removeItem(key);
     }
 
+    // These listener hooks exist on Firebase's persistence contract, but for
+    // AsyncStorage-backed React Native auth we do not need cross-tab syncing.
     _addListener() {
       return;
     }
@@ -60,15 +84,16 @@ function createReactNativePersistence(storage: typeof AsyncStorage) {
   };
 }
 
-// --- Initialize Auth ---
+// Reuse an existing auth instance when hot reload or prior initialization has
+// already created one. Otherwise initialize with React Native persistence.
 const auth = hasApp
   ? getAuth(app)
   : initializeAuth(app, {
       persistence: createReactNativePersistence(AsyncStorage) as never,
     });
 
-// --- Initialize Firestore ---
+// Firestore is exported as a shared singleton so all services talk to the same
+// initialized app instance.
 const db = getFirestore(app);
 
-// --- Exports ---
 export { app, auth, db };

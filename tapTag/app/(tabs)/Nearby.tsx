@@ -19,7 +19,21 @@ import { getUserWallet } from "../../src/services/firestore/wallet";
 import { getDistance } from "../../src/utils/distance";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
+/*
+  File role:
+  Nearby is the live contextual recommendation loop.
+
+  Mental model:
+  get location -> find nearest seeded merchant -> resolve category -> recommend
+  from wallet -> show nudge -> track whether the user opened or dismissed it.
+
+  It is intentionally foreground-only and seeded-data-only for this stage.
+*/
+
 const NEARBY_RADIUS_METERS = 500;
+
+// Fixed radius keeps the behavior easy to explain during beta testing. A future
+// version might tune this dynamically or per merchant density.
 
 type NearbyMatch = {
   brand: Brand;
@@ -28,6 +42,9 @@ type NearbyMatch = {
   recommendation: ReturnType<typeof recommendBestCardForCategory>;
 };
 
+// Nearby is the live version of the Lab loop. Instead of a manually selected
+// brand, it picks the nearest seeded merchant based on current foreground
+// location and then runs the same recommendation engine.
 export default function Nearby() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -39,6 +56,8 @@ export default function Nearby() {
     useState<string | null>(null);
   const lastTrackedRecommendationKey = useRef<string | null>(null);
 
+  // This loader asks for location, pulls the knowledge layer, derives the
+  // nearest seeded merchant, and computes the best wallet card for it.
   const loadNearbyRecommendation = useCallback(async () => {
     if (!user) return;
 
@@ -72,6 +91,9 @@ export default function Nearby() {
         return;
       }
 
+      // We intentionally use the nearest seeded brand, not a third-party places
+      // API, because this slice is about proving the TapTag loop, not solving
+      // merchant discovery at production scale.
       const evaluateNearbyLocation = (location: Location.LocationObject) => {
         let nearestBrand: Brand | null = null;
         let nearestDistance = Number.POSITIVE_INFINITY;
@@ -152,6 +174,8 @@ export default function Nearby() {
 
       let locationSubscription: Location.LocationSubscription | undefined;
 
+      // Start the watcher only while this screen is focused. That keeps the app
+      // simple and avoids pretending we have a background location system.
       (async () => {
         locationSubscription = await loadNearbyRecommendation();
       })();
@@ -171,6 +195,7 @@ export default function Nearby() {
       ].join("|")
     : null;
 
+  // This text is the compact nudge version of the full recommendation detail.
   const nudgeText =
     match?.recommendation.bestCard && match.normalizedCategory
       ? `Use ${match.recommendation.bestCard.name} here for better ${match.normalizedCategory} rewards.`
@@ -179,6 +204,8 @@ export default function Nearby() {
     recommendationKey !== null && dismissedRecommendationKey === recommendationKey;
   const showGuidanceCard = !match || isDismissed;
 
+  // A new recommendation closes the expanded details view so the screen does not
+  // show stale detail content for a prior merchant.
   useEffect(() => {
     if (!recommendationKey) {
       setIsRecommendationOpen(false);
@@ -188,6 +215,8 @@ export default function Nearby() {
     setIsRecommendationOpen(false);
   }, [recommendationKey]);
 
+  // Like Lab, Nearby dedupes shown events so the position watcher can update
+  // state without spamming analytics for the same recommendation.
   useEffect(() => {
     if (!user || !match?.recommendation.bestCard || !recommendationKey) {
       return;
@@ -217,6 +246,8 @@ export default function Nearby() {
     });
   }, [match, recommendationKey, user]);
 
+  // Open is a meaningful interaction, it tells us the nudge was interesting
+  // enough for the user to inspect further.
   async function handleOpenRecommendation() {
     if (!user || !match?.recommendation.bestCard) {
       return;
@@ -241,6 +272,8 @@ export default function Nearby() {
     }
   }
 
+  // Dismiss is equally useful because it helps distinguish ignored vs examined
+  // recommendations in this thin event model.
   async function handleDismissRecommendation() {
     if (!user || !match?.recommendation.bestCard || !recommendationKey) {
       return;
@@ -315,6 +348,8 @@ export default function Nearby() {
             <Text style={styles.nudgeLabel}>TapTag Nudge</Text>
             <Text style={styles.nudgeText}>{nudgeText}</Text>
             <View style={styles.nudgeActions}>
+              {/* Open reveals the fuller explanation and records explicit user
+                  engagement instead of assuming the shown state was enough. */}
               <TouchableOpacity
                 style={styles.nudgeButtonPrimary}
                 onPress={handleOpenRecommendation}

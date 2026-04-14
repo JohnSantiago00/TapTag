@@ -2,9 +2,23 @@ import { useRouter } from "expo-router";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
 
+/*
+  File role:
+  Home is the orientation screen for the whole beta.
+
+  It does not perform core recommendation logic itself. Instead, it explains the
+  product clearly and routes the tester toward the screens that prove the main
+  loop, Wallet, Lab, Nearby, and Profile.
+*/
+
+// Home is the product framing screen. It explains what TapTag is, what works
+// now, and where a tester should go next.
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
+
+  // The checklist is intentionally lightweight. Right now only auth state is
+  // automatically known here, the rest remain manual tester prompts.
   const checklist = [
     { label: "Signed in", done: Boolean(user) },
     { label: "Wallet configured", done: false },
@@ -55,6 +69,8 @@ export default function Home() {
       </View>
 
       <View style={styles.actionsRow}>
+        {/* These buttons are explicit instead of relying on the tab bar alone,
+            because first-run clarity matters more than avoiding duplicate nav. */}
         <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Cards")}>
           <Text style={styles.actionButtonText}>Open Wallet</Text>
         </TouchableOpacity>
