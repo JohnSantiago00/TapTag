@@ -1,12 +1,11 @@
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../config/firebase";
+import { DEMO_CARDS } from '../../demo/knowledge';
 
 /*
   File role:
-  Reads global card-product knowledge from Firestore.
+  Reads global card-product knowledge for demo mode.
 
-  These documents describe reward behavior of products like Amex Gold or Chase
-  Sapphire Preferred. They are not user-specific data.
+  In this branch, cards are bundled with the app so a tester can clone and run
+  without provisioning Firestore first.
 */
 
 export interface KnowledgeCardRewardRule {
@@ -23,51 +22,6 @@ export interface KnowledgeCard {
   annualFee?: number | null;
 }
 
-// Firestore seed data is trusted only loosely. These normalizers keep the UI
-// resilient if docs are incomplete, stale, or shaped slightly differently.
-function normalizeRewardRules(rawRules: unknown): KnowledgeCardRewardRule[] {
-  if (!Array.isArray(rawRules)) {
-    return [];
-  }
-
-  return rawRules
-    // Normalize first because Firestore can contain mixed types or incomplete
-    // seed data, especially during earlier prototype stages.
-    .map((rule: any) => ({
-      category:
-        typeof rule?.category === "string" && rule.category.trim()
-          ? rule.category.trim()
-          : "Other",
-      rate: Number(rule?.rate) || 0,
-    }))
-    .filter((rule) => rule.rate > 0);
-}
-
-// Cards are global knowledge-layer docs, not user-owned card instances.
 export async function getAllCards(): Promise<KnowledgeCard[]> {
-  try {
-    const ref = collection(db, "cards");
-    const snapshot = await getDocs(ref);
-
-    // Return a UI-safe shape so screens do not each need to defend against nulls
-    // or missing fields separately.
-    return snapshot.docs.map((cardDoc) => {
-      const data = cardDoc.data();
-
-      return {
-        id: cardDoc.id,
-        name: data.name || "Unknown Card",
-        issuer: data.issuer || "Unknown Issuer",
-        network: data.network || "Unknown Network",
-        rewardRules: normalizeRewardRules(data.rewardRules),
-        annualFee:
-          data.annualFee === undefined || data.annualFee === null
-            ? null
-            : Number(data.annualFee),
-      };
-    });
-  } catch (error) {
-    console.error("Error fetching cards:", error);
-    throw error;
-  }
+  return DEMO_CARDS.map((card) => ({ ...card }));
 }
