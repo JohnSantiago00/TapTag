@@ -252,4 +252,4 @@ This keeps the UX close to the real product flow while removing backend friction
 
 This branch is for demo/testing simplicity.
 
-If you want the Firebase-backed setup path, use the branch/workflow documented in the repository-level Firebase setup docs instead of this branch.
+If you want the old backend-backed workflow, switch to the branch that still carries it. `demo-mode` is intentionally local-first.

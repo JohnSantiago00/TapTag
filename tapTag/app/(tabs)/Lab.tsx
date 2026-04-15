@@ -70,7 +70,7 @@ export default function Lab() {
       setSelectedBrandId((current) => current ?? loadedBrands[0]?.id ?? null);
     } catch (err) {
       console.error("Error loading knowledge layer:", err);
-      setError("Could not load Firestore knowledge-layer data.");
+      setError("Could not load demo knowledge-layer data.");
     } finally {
       setLoading(false);
     }

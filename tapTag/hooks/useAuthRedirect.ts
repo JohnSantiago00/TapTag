@@ -20,7 +20,7 @@ export function useAuthRedirect() {
 
   useEffect(() => {
     if (loading) {
-      // Do nothing until Firebase has resolved whether we have a session.
+      // Do nothing until local auth has resolved whether we have a session.
       return;
     }
 

@@ -33,11 +33,11 @@ Root files:
 
 Inside `tapTag/`:
 - `app/` contains Expo Router screens and route layouts
-- `src/config/` contains Firebase bootstrapping
+- `src/config/` contains compatibility stubs for the demo branch
 - `src/context/` contains global React context like auth state
-- `src/services/firestore/` contains Firestore read/write helpers
+- `src/services/firestore/` contains the app's data-access layer, now backed by local demo storage on this branch
+- `src/demo/` contains bundled knowledge data and local persistence helpers
 - `src/utils/` contains pure helper logic such as recommendation and distance math
-- `seed/` contains local scripts for seeding and cleanup of Firestore knowledge data
 - `scripts/` contains local dev helpers like Expo startup networking behavior
 
 ## 3. App shell and routing
@@ -50,7 +50,7 @@ Files:
 - `tapTag/hooks/useAuthRedirect.ts`
 
 How it works:
-1. `app/_layout.tsx` initializes Firebase, wraps the app in `AuthProvider`, and blocks rendering behind a loading spinner until auth state is known.
+1. `app/_layout.tsx` wraps the app in `AuthProvider` and blocks rendering behind a loading spinner until local auth state is known.
 2. `useAuthRedirect()` reads auth state and current route segment, then pushes users into either the auth group or the tab group.
 3. `app/index.tsx` simply redirects to Login. Real access control is handled by the auth hook.
 4. The tab layout defines the main product journey: Home, Wallet, Lab, Nearby, Profile.
@@ -60,22 +60,18 @@ Why this structure was chosen:
 - auth state is resolved once, not through multiple listeners
 - screen files stay mostly focused on product logic and UI
 
-## 4. Firebase bootstrapping
+## 4. Demo runtime compatibility
 
 File:
 - `tapTag/src/config/firebase.ts`
 
 Responsibilities:
-- initialize Firebase app from Expo env vars
-- initialize Firebase Auth with AsyncStorage persistence
-- initialize Firestore
-
-Important implementation detail:
-The file includes a custom React Native persistence wrapper instead of importing a helper from Firebase that had package/export compatibility issues in this environment.
+- provide a stable compatibility boundary for code that used to depend on backend bootstrapping
+- make it explicit that `demo-mode` runs without live Firebase initialization
 
 Why this matters:
-- auth state persists across app restarts
-- the app avoids SDK-export drift that previously caused setup/runtime pain
+- the demo branch stays easy to run
+- backend-only setup concerns stay out of the tester path
 
 ## 5. Auth flow
 
@@ -86,34 +82,36 @@ Files:
 - `tapTag/src/utils/validation.ts`
 
 How it works:
-- `AuthProvider` listens to Firebase auth changes with `onAuthStateChanged`
-- when a user signs in, it also ensures a matching Firestore profile exists
-- Login and SignUp do local validation first, then call Firebase Auth
-- both auth screens translate Firebase error codes into clearer UI messages
+- `AuthProvider` restores local auth state from AsyncStorage-backed demo storage
+- when a user signs in, it ensures a matching local profile exists
+- Login and SignUp do local validation first, then use the local demo auth flow
+- both auth screens keep the UX simple so testers can get into the app fast
 
 Why it is written this way:
 - one shared auth context avoids duplicate listeners and route flicker
-- profile upsert on sign-in keeps the rest of the app simple, because screens can assume the user doc should exist
+- profile upsert on sign-in keeps the rest of the app simple
 - validation stays intentionally minimal because TapTag is not building a heavy onboarding system yet
 
-## 6. Firestore model
+## 6. Demo data model
 
-Global collections:
-- `cards`
-- `brands`
-- `mcc_map`
+Bundled global data:
+- cards
+- brands
+- MCC mappings
 
-User data:
-- `users/{uid}`
-- `users/{uid}/wallet/{cardProductId}`
-- `users/{uid}/events/{eventId}`
+Local user data:
+- demo users
+- current session
+- wallet card refs
+- profile
+- event history
 
 Why this matters:
 - global knowledge stays separate from user state
-- wallet docs store only references to product docs, not sensitive financial data
-- events are user-scoped and lightweight
+- wallet entries store only card-product references, not sensitive financial data
+- events stay lightweight and QA-friendly
 
-## 7. Firestore service layer
+## 7. Data service layer
 
 Files:
 - `src/services/firestore/cards.ts`
@@ -124,12 +122,12 @@ Files:
 - `src/services/firestore/events.ts`
 
 Design pattern:
-Each file does one thing, normalize Firestore documents into shapes the UI can trust.
+Each file does one thing and normalizes data into shapes the UI can trust.
 
 Why this is useful:
 - screen code stays readable
-- Firestore normalization is centralized
-- seed data can evolve without every screen having to defend against shape drift separately
+- data normalization is centralized
+- bundled demo data can evolve without every screen defending against shape drift separately
 
 Specific notes:
 
@@ -146,7 +144,7 @@ Normalizes MCC docs into a `normalizedCategory` that powers the recommendation e
 This file is one of the most important in the whole repo, because category normalization is the bridge between merchant context and reward logic.
 
 ### wallet.ts
-Stores and reads wallet refs under `users/{uid}/wallet`.
+Stores and reads wallet refs for the current local demo user.
 This file preserves the core privacy boundary, TapTag knows which product IDs a user selected, but not full card credentials.
 
 ### userProfile.ts
@@ -269,23 +267,19 @@ Nearby uses it to compare the device location with seeded merchant coordinates.
 Minimal auth validation helpers.
 These are intentionally small because richer onboarding rules are not the current priority.
 
-## 11. Seed and cleanup scripts
+## 11. Demo data and local persistence helpers
 
 Files:
-- `tapTag/seed/seedKnowledgeLayer.mjs`
-- `tapTag/seed/cleanupKnowledgeLayer.mjs`
+- `tapTag/src/demo/knowledge.ts`
+- `tapTag/src/demo/storage.ts`
 
 Why they exist:
-The app depends on seeded global knowledge data. Without it, Wallet, Lab, and Nearby do not have the card, brand, and MCC context they need.
+The demo branch depends on bundled knowledge data and local persistence instead of backend bootstrap.
 
 Important behavior:
-- prefer Firebase Admin credentials when available
-- if no admin key exists, fall back to client SDK using `.env`
-- validate seed data before writing it
-- keep normalized categories constrained so the recommendation engine does not drift away from supported values
-
-Why the fallback is valuable:
-It makes local setup work even when a service account JSON is missing.
+- ships cards, brands, and MCC mappings with the app
+- stores local auth, wallet state, profile state, and event history on-device
+- keeps the product loop testable without backend setup
 
 ## 12. Dev environment helpers
 
@@ -321,7 +315,8 @@ Read it in this order:
 8. `tapTag/app/(tabs)/Lab.tsx`
 9. `tapTag/app/(tabs)/Nearby.tsx`
 10. `tapTag/app/(tabs)/Profile.tsx`
-11. `tapTag/seed/seedKnowledgeLayer.mjs`
+11. `tapTag/src/demo/knowledge.ts`
+12. `tapTag/src/demo/storage.ts`
 
 That order mirrors how the app actually thinks:
 - product rules
@@ -334,7 +329,7 @@ That order mirrors how the app actually thinks:
 - merchant simulation
 - live recommendation
 - QA verification
-- data seeding
+- demo data and persistence
 
 ## 15. Current limitations, intentionally left simple
 
