@@ -78,8 +78,8 @@ export default function Cards() {
     [cards, selectedIds]
   );
 
-  // Toggling a wallet card updates Firestore first, then records a lightweight
-  // event so Profile can show recent activity and QA can verify behavior.
+  // Toggling a wallet card updates local wallet state, then records a
+  // lightweight event so Profile can show recent activity and QA can verify behavior.
   async function handleToggleWalletCard(cardId: string, isSelected: boolean) {
     if (!user) return;
 

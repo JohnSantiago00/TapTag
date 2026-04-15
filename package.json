@@ -8,13 +8,6 @@
     "android": "npm run android --prefix tapTag",
     "ios": "npm run ios --prefix tapTag",
     "start:tunnel": "npm run start:tunnel --prefix tapTag",
-    "setup": "npm run setup --prefix tapTag",
-    "doctor": "npm run doctor --prefix tapTag",
-    "first-run": "npm run first-run --prefix tapTag",
-    "bootstrap": "npm run bootstrap --prefix tapTag",
-    "bootstrap:client": "npm run bootstrap:client --prefix tapTag",
-    "seed:knowledge": "npm run seed:knowledge --prefix tapTag",
-    "cleanup:knowledge": "npm run cleanup:knowledge --prefix tapTag",
     "lint": "npm run lint --prefix tapTag"
   }
 }

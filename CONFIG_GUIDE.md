@@ -18,20 +18,6 @@ Important scripts:
   Also uses the custom start script, with `--web` passed through.
 - `start:tunnel`
   Fallback when LAN or Tailscale routing is unreliable.
-- `setup`
-  Creates `.env` from `.env.example` for first-run onboarding.
-- `doctor`
-  Verifies expected env vars and warns about missing admin credentials.
-- `first-run`
-  One-command onboarding helper that runs doctor, deploys Firestore rules/indexes, and bootstraps seeded data in client mode.
-- `bootstrap`
-  Runs setup validation, then seeds the Firestore knowledge layer.
-- `bootstrap:client`
-  Forces client-SDK seeding for clones that have Firebase app config but no service account key yet.
-- `seed:knowledge`
-  Seeds the Firestore knowledge layer.
-- `cleanup:knowledge`
-  Deletes stale prototype docs from older seed models.
 - `lint`
   Uses plain `eslint .` instead of `expo lint` because the repo no longer matches Expo starter assumptions.
 
@@ -39,7 +25,6 @@ Why the dependency mix looks broad:
 Some Expo template dependencies still exist even though not every one is central to the current thin slice. The important active ones are:
 - `expo`, `react`, `react-native`
 - `expo-router`
-- `firebase`
 - `expo-location`
 - `@react-native-async-storage/async-storage`
 - navigation and safe-area packages
@@ -110,34 +95,14 @@ Minimal Babel config for Expo.
 Why it is small:
 Nothing custom is needed yet. That is a good sign.
 
-## 7. `tapTag/firestore.rules`, `tapTag/firestore.indexes.json`, and root `firebase.json`
+## 7. `tapTag/.env`
 
 Purpose:
-Provide a repo-local Firestore rules and indexes template that matches the current app behavior.
+Local environment variables used only for developer-local overrides when needed.
 
-Why these now matter more:
-The project has an explicit `bootstrap:client` path for fresh clones, so there needs to be a documented rules/indexes setup for the no-service-account flow.
+On `demo-mode`, the app does not require Firebase env values to run.
 
-## 8. `tapTag/.env`
-
-Purpose:
-Local environment variables used by the Expo client and seed scripts.
-
-Important variables:
-- `EXPO_PUBLIC_FIREBASE_API_KEY`
-- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
-- `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-- `EXPO_PUBLIC_FIREBASE_APP_ID`
-- `EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID`
-- `GOOGLE_APPLICATION_CREDENTIALS`
-
-Important distinction:
-- `EXPO_PUBLIC_*` values are bundled for the client app
-- `GOOGLE_APPLICATION_CREDENTIALS` is for local scripts that may use Firebase Admin credentials
-
-## 9. `tapTag/expo-env.d.ts`
+## 8. `tapTag/expo-env.d.ts`
 
 Purpose:
 Expo TypeScript environment typing support.
@@ -145,7 +110,7 @@ Expo TypeScript environment typing support.
 Why it exists:
 Keeps TypeScript happy around Expo-provided env/module behavior.
 
-## 10. `tapTag/.gitignore`
+## 9. `tapTag/.gitignore`
 
 Purpose:
 Keeps local build/cache and secret-like files out of version control.
@@ -153,23 +118,21 @@ Keeps local build/cache and secret-like files out of version control.
 Why it matters here:
 Especially important because `.env`, `.expo`, and other local-only artifacts should not pollute commits.
 
-## 11. `tapTag/.vscode/extensions.json` and `tapTag/.vscode/settings.json`
+## 10. `tapTag/.vscode/extensions.json` and `tapTag/.vscode/settings.json`
 
 Purpose:
 Workspace editor convenience for VS Code users.
 
 These are optional quality-of-life files, not product logic.
 
-## 12. `tapTag/README.md`
+## 11. `tapTag/README.md`
 
 Purpose:
 Developer setup guide for the app folder.
 
 What it currently documents well:
 - product framing
-- setup requirements
-- seeding flow
-- cleanup flow
+- demo tester flow
 - startup flow
 - Tailscale/tunnel networking notes
 - current feature set
@@ -177,7 +140,7 @@ What it currently documents well:
 Why it matters:
 It is the first thing a fresh clone needs after dependencies are installed.
 
-## 13. `tapTag/assets/images/*`
+## 12. `tapTag/assets/images/*`
 
 Purpose:
 Application icons, splash imagery, and favicon.
@@ -185,7 +148,7 @@ Application icons, splash imagery, and favicon.
 Current role:
 Mostly branding/packaging assets. They matter to Expo and app identity, but they do not affect the recommendation logic.
 
-## 14. Root docs you should treat as the project-reading order
+## 13. Root docs you should treat as the project-reading order
 
 - `TAPTAG_CANONICAL_CONTEXT.md`
   Product source of truth.
@@ -194,11 +157,9 @@ Mostly branding/packaging assets. They matter to Expo and app identity, but they
 - `CONFIG_GUIDE.md`
   Explanation of config/manifests/tooling files.
 - `tapTag/README.md`
-  Local app setup and current dev workflow.
-- `FIREBASE_SETUP.md`
-  First-run Firebase setup, rules, indexes, and bootstrap modes.
+  Local app setup and current demo-mode workflow.
 
-## 15. Files that intentionally stay minimal
+## 14. Files that intentionally stay minimal
 
 Some files are short on purpose:
 - `app/index.tsx` should stay almost empty because it is just a route handoff
@@ -209,7 +170,7 @@ Some files are short on purpose:
 Minimal files are not necessarily underbuilt. In this repo, several of them are
 small because the responsibility has been intentionally centralized elsewhere.
 
-## 16. The simplest mental split
+## 15. The simplest mental split
 
 Think of the project in four layers:
 
@@ -220,8 +181,8 @@ Think of the project in four layers:
 - `tapTag/app/*`
 - `tapTag/src/*`
 
-3. Data/bootstrap helpers
-- `tapTag/seed/*`
+3. Demo data and helper scripts
+- `tapTag/src/demo/*`
 - `tapTag/scripts/*`
 
 4. Tooling/config
@@ -234,7 +195,7 @@ Think of the project in four layers:
 
 If you read the project in that order, it makes much more sense.
 
-## 17. Best way to study the app end to end
+## 16. Best way to study the app end to end
 
 If your goal is to understand the live runtime flow, follow this exact path:
 - `app/_layout.tsx`
@@ -252,6 +213,7 @@ If your goal is to understand the live runtime flow, follow this exact path:
 - `app/(tabs)/Lab.tsx`
 - `app/(tabs)/Nearby.tsx`
 - `app/(tabs)/Profile.tsx`
-- `seed/seedKnowledgeLayer.mjs`
+- `src/demo/knowledge.ts`
+- `src/demo/storage.ts`
 
-That path mirrors how the product actually functions at runtime and during setup.
+That path mirrors how the product actually functions at runtime on `demo-mode`.

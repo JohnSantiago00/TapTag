@@ -94,7 +94,7 @@ These commands proxy into the actual Expo app inside `tapTag/`:
 - `npm run start:tunnel`
 - `npm run lint`
 
-There are also Firebase/bootstrap commands in this repo because other branches still use them, but **they are not part of the tester path on `demo-mode`**.
+This branch keeps the root command surface intentionally small. If a command is not listed above, assume it is not part of the `demo-mode` tester path.
 
 ## What demo mode stores locally
 
@@ -217,7 +217,7 @@ If you just want to validate the recommendation engine quickly, use **Lab** firs
 
 This README describes the **demo branch experience**.
 
-Other branches in this repo may still use Firebase-backed auth and Firestore-backed data. If someone is testing `demo-mode`, they should follow this README, not the backend setup docs.
+Other branches in this repo may still use backend services. If someone is testing `demo-mode`, they should follow this README and ignore older backend setup material.
 
 ## Where to read next
 
