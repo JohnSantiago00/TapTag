@@ -1,20 +1,11 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
-import { db } from "../../config/firebase";
+import { readJson, writeJson } from '../../demo/storage';
 
 /*
   File role:
   Encapsulates the user's wallet collection.
 
-  Key product rule:
-  A wallet entry represents ownership/selection of a card product reference,
-  not a full payment instrument.
+  In demo mode, wallet state lives in AsyncStorage so testers can use the app
+  offline and without setting up Firestore.
 */
 
 export interface WalletCardRef {
@@ -25,60 +16,52 @@ export interface WalletCardRef {
   updatedAt: string;
 }
 
-// The wallet stores references to card products only. This is the core privacy
-// boundary, no real card credentials live here.
-export async function getUserWallet(uid: string): Promise<WalletCardRef[]> {
-  const ref = collection(db, `users/${uid}/wallet`);
-  const snapshot = await getDocs(ref);
-
-  return snapshot.docs.map((walletDoc) => {
-    const data = walletDoc.data();
-
-    return {
-      // The document id is the card product id. That keeps reads simple and
-      // avoids storing duplicate id fields in the doc body.
-      id: walletDoc.id,
-      enabled: data.enabled !== false,
-      nickname:
-        typeof data.nickname === "string" ? data.nickname : undefined,
-      addedAt:
-        typeof data.addedAt === "string" ? data.addedAt : new Date().toISOString(),
-      updatedAt:
-        typeof data.updatedAt === "string"
-          ? data.updatedAt
-          : new Date().toISOString(),
-    };
-  });
+function walletKey(uid: string) {
+  return `taptag.demo.wallet.${uid}`;
 }
 
-// We preserve the original addedAt when a user re-adds a card so the wallet can
-// behave like a stable list over time.
+export async function getUserWallet(uid: string): Promise<WalletCardRef[]> {
+  return readJson<WalletCardRef[]>(walletKey(uid), []);
+}
+
 export async function addWalletCard(
   uid: string,
   cardProductId: string,
   nickname?: string
 ) {
-  const ref = doc(db, `users/${uid}/wallet/${cardProductId}`);
-
-  // We read once first so re-adding a previously selected card preserves its
-  // original creation time instead of making it look brand new every time.
-  const existing = await getDoc(ref);
+  const wallet = await getUserWallet(uid);
   const now = new Date().toISOString();
+  const existing = wallet.find((item) => item.id === cardProductId);
 
-  await setDoc(ref, {
-    enabled: true,
-    nickname: nickname ?? null,
-    addedAt:
-      existing.exists() && typeof existing.data().addedAt === "string"
-        ? existing.data().addedAt
-        : now,
-    updatedAt: now,
-  });
+  const nextWallet = existing
+    ? wallet.map((item) =>
+        item.id === cardProductId
+          ? {
+              ...item,
+              enabled: true,
+              nickname: nickname ?? item.nickname,
+              updatedAt: now,
+            }
+          : item
+      )
+    : [
+        ...wallet,
+        {
+          id: cardProductId,
+          enabled: true,
+          nickname,
+          addedAt: now,
+          updatedAt: now,
+        },
+      ];
+
+  await writeJson(walletKey(uid), nextWallet);
 }
 
-// Deleting the doc keeps the current thin slice simple. A future version could
-// soft-disable instead if history becomes important.
 export async function removeWalletCard(uid: string, cardProductId: string) {
-  const ref = doc(db, `users/${uid}/wallet/${cardProductId}`);
-  await deleteDoc(ref);
+  const wallet = await getUserWallet(uid);
+  await writeJson(
+    walletKey(uid),
+    wallet.filter((item) => item.id !== cardProductId)
+  );
 }

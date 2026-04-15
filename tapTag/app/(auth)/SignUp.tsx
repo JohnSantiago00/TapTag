@@ -1,6 +1,5 @@
-import { useRouter } from "expo-router";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { useState } from "react";
+import { useRouter } from 'expo-router';
+import { useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -8,72 +7,54 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from "react-native";
-import { auth } from "../../src/config/firebase";
-import { upsertUserProfile } from "../../src/services/firestore/userProfile";
-import { validateEmail, validatePassword } from "../../src/utils/validation";
-
-/*
-  File role:
-  SignUp creates the minimal TapTag account, email/password auth plus a
-  matching user profile doc with privacy-first defaults.
-*/
+} from 'react-native';
+import { useAuth } from '../../src/context/AuthContext';
+import { validateEmail, validatePassword } from '../../src/utils/validation';
 
 export default function SignupScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [status, setStatus] = useState("");
+  const { signUp, continueInDemoMode } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Sign up does two things, create Firebase Auth user and ensure the matching
-  // Firestore profile exists with TapTag defaults.
   const handleSignUp = async () => {
-    if (!validateEmail(email)) return setStatus("Please enter a valid email.");
-    if (!validatePassword(password))
-      return setStatus("Password must be at least 6 characters.");
+    if (!validateEmail(email)) return setStatus('Please enter a valid email.');
+    if (!validatePassword(password)) {
+      return setStatus('Password must be at least 6 characters.');
+    }
 
     try {
       setLoading(true);
-      setStatus("Creating account...");
-
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        email.trim(),
-        password
-      );
-
-      // Firebase returns the new auth user immediately. We then mirror that user
-      // into Firestore so the rest of the app has a profile document to read.
-      const user = userCredential.user;
-
-      await upsertUserProfile(user.uid, {
-        displayName: user.displayName ?? undefined,
-      });
-
-      setStatus("Account created!");
-      router.replace("/(tabs)/Home");
+      setStatus('Creating account...');
+      await signUp(email.trim(), password);
+      setStatus('Account created!');
+      router.replace('/(tabs)/Home');
     } catch (error: any) {
-      console.error(error);
-      setStatus(getFirebaseErrorMessage(error.code));
+      setStatus(getAuthErrorMessage(error?.code));
     } finally {
       setLoading(false);
     }
   };
 
-  // Friendly error translation, same idea as Login.tsx.
-  const getFirebaseErrorMessage = (code: string): string => {
+  const handleDemo = async () => {
+    try {
+      setLoading(true);
+      setStatus('Starting demo mode...');
+      await continueInDemoMode();
+      router.replace('/(tabs)/Home');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getAuthErrorMessage = (code: string): string => {
     switch (code) {
-      case "auth/email-already-in-use":
-        return "This email is already registered.";
-      case "auth/invalid-email":
-        return "Please enter a valid email address.";
-      case "auth/weak-password":
-        return "Password is too weak. Try something stronger.";
-      case "auth/too-many-requests":
-        return "Too many attempts. Try again later.";
+      case 'auth/email-already-in-use':
+        return 'This email is already registered.';
       default:
-        return "Something went wrong. Please try again.";
+        return 'Something went wrong. Please try again.';
     }
   };
 
@@ -81,7 +62,7 @@ export default function SignupScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Create Account</Text>
       <Text style={styles.subtitle}>
-        Set up TapTag with email only. No card numbers, CVV, or bank logins.
+        Create a local TapTag demo account, or skip straight into demo mode.
       </Text>
 
       <TextInput
@@ -108,16 +89,20 @@ export default function SignupScreen() {
         onPress={handleSignUp}
         disabled={loading}
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Sign Up</Text>
-        )}
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign Up</Text>}
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.demoButton, loading && { opacity: 0.6 }]}
+        onPress={handleDemo}
+        disabled={loading}
+      >
+        <Text style={styles.demoButtonText}>Skip to Demo Mode</Text>
       </TouchableOpacity>
 
       {status ? <Text style={styles.status}>{status}</Text> : null}
 
-      <TouchableOpacity onPress={() => router.push("/(auth)/Login")}>
+      <TouchableOpacity onPress={() => router.push('/(auth)/Login')}>
         <Text style={styles.switchText}>Already have an account? Log in</Text>
       </TouchableOpacity>
     </View>
@@ -127,40 +112,54 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000",
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
     padding: 20,
   },
   title: {
     fontSize: 28,
-    color: "#fff",
-    fontWeight: "700",
+    color: '#fff',
+    fontWeight: '700',
     marginBottom: 10,
   },
   subtitle: {
-    color: "#aaa",
+    color: '#aaa',
     fontSize: 15,
     lineHeight: 21,
-    textAlign: "center",
+    textAlign: 'center',
     marginBottom: 24,
   },
   input: {
-    width: "100%",
-    backgroundColor: "#1a1a1a",
-    color: "#fff",
+    width: '100%',
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
     marginBottom: 12,
     padding: 12,
     borderRadius: 8,
   },
   button: {
-    backgroundColor: "#0af",
+    backgroundColor: '#0af',
     paddingVertical: 12,
     paddingHorizontal: 50,
     borderRadius: 8,
     marginTop: 10,
+    width: '100%',
+    alignItems: 'center',
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  switchText: { color: "#0af", marginTop: 15 },
-  status: { color: "#fff", marginTop: 15 },
+  demoButton: {
+    backgroundColor: '#111822',
+    borderColor: '#0af',
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  demoButtonText: { color: '#8ecfff', fontSize: 16, fontWeight: '600' },
+  switchText: { color: '#0af', marginTop: 15 },
+  status: { color: '#fff', marginTop: 15, textAlign: 'center' },
 });

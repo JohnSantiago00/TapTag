@@ -45,10 +45,10 @@ export default function Home() {
 
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Quick Start</Text>
-        <Text style={styles.cardText}>1. Open Wallet and select the cards you own.</Text>
-        <Text style={styles.cardText}>2. Open Lab to test recommendations by merchant.</Text>
-        <Text style={styles.cardText}>3. Open Nearby to test live foreground suggestions.</Text>
-        <Text style={styles.cardText}>4. Open Profile to verify event tracking is working.</Text>
+        <Text style={styles.cardText}>1. Continue in demo mode or create a local demo account.</Text>
+        <Text style={styles.cardText}>2. Open Wallet and select the cards you want to test.</Text>
+        <Text style={styles.cardText}>3. Open Lab to test recommendations by merchant.</Text>
+        <Text style={styles.cardText}>4. Open Profile to verify local event tracking is working.</Text>
       </View>
 
       <View style={styles.card}>
@@ -91,10 +91,10 @@ export default function Home() {
       <View style={styles.card}>
         <Text style={styles.cardTitle}>What works now</Text>
         <Text style={styles.cardText}>
-          The app supports sign-in, seeded Firestore knowledge data, wallet
-          selection by card-product reference, Lab-based merchant testing,
-          foreground nearby checks, in-app nudge actions, and lightweight event
-          tracking.
+          This demo branch supports local sign-in, bundled knowledge data,
+          wallet selection by card-product reference, Lab-based merchant
+          testing, foreground nearby checks, in-app nudge actions, and
+          lightweight local event tracking.
         </Text>
       </View>
 

@@ -1,110 +1,80 @@
-import { doc, getDoc, setDoc } from "firebase/firestore";
-import { db } from "../../config/firebase";
+import { readJson, writeJson } from '../../demo/storage';
 
 /*
   File role:
   Owns the lightweight TapTag user profile document.
 
-  Current product stance:
-  The profile is intentionally tiny, enough for identity-adjacent app settings
-  without becoming a large settings surface.
+  In demo mode, profile data stays local so the app remains clone-and-run.
 */
 
 export interface UserProfile {
   displayName?: string;
-  privacyMode: "strict";
+  privacyMode: 'strict';
   notificationsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-// Privacy mode is forced to strict because that is the current product rule,
-// not a user-configurable setting yet.
+function profileKey(uid: string) {
+  return `taptag.demo.profile.${uid}`;
+}
+
 function normalizeUserProfile(data: any): UserProfile {
   const now = new Date().toISOString();
 
   return {
     displayName:
-      typeof data?.displayName === "string" && data.displayName.trim()
+      typeof data?.displayName === 'string' && data.displayName.trim()
         ? data.displayName.trim()
         : undefined,
-    privacyMode: "strict",
+    privacyMode: 'strict',
     notificationsEnabled:
-      typeof data?.notificationsEnabled === "boolean"
+      typeof data?.notificationsEnabled === 'boolean'
         ? data.notificationsEnabled
         : false,
-    createdAt: typeof data?.createdAt === "string" ? data.createdAt : now,
-    updatedAt: typeof data?.updatedAt === "string" ? data.updatedAt : now,
+    createdAt: typeof data?.createdAt === 'string' ? data.createdAt : now,
+    updatedAt: typeof data?.updatedAt === 'string' ? data.updatedAt : now,
   };
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const ref = doc(db, "users", uid);
-  const snapshot = await getDoc(ref);
-
-  if (!snapshot.exists()) {
-    return null;
-  }
-
-  return normalizeUserProfile(snapshot.data());
+  const stored = await readJson<Record<string, unknown> | null>(profileKey(uid), null);
+  return stored ? normalizeUserProfile(stored) : null;
 }
 
-// Upsert is called from auth flows so profile creation is safe to repeat.
 export async function upsertUserProfile(
   uid: string,
   profile?: { displayName?: string }
-) {
-  const ref = doc(db, "users", uid);
-
-  // The auth flow may call this many times over the lifetime of the account,
-  // so it is careful to preserve existing fields unless it must fill defaults.
-  const existing = await getDoc(ref);
+): Promise<UserProfile> {
+  const existing = await getUserProfile(uid);
   const now = new Date().toISOString();
 
-  const existingData = existing.exists() ? existing.data() : null;
+  const nextProfile: UserProfile = {
+    displayName: profile?.displayName ?? existing?.displayName,
+    privacyMode: 'strict',
+    notificationsEnabled: existing?.notificationsEnabled ?? false,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
 
-  await setDoc(
-    ref,
-    {
-      displayName:
-        profile?.displayName ??
-        (typeof existingData?.displayName === "string"
-          ? existingData.displayName
-          : null),
-      privacyMode: "strict",
-      notificationsEnabled:
-        typeof existingData?.notificationsEnabled === "boolean"
-          ? existingData.notificationsEnabled
-          : false,
-      createdAt:
-        typeof existingData?.createdAt === "string"
-          ? existingData.createdAt
-          : now,
-      updatedAt: now,
-    },
-    { merge: true }
-  );
+  await writeJson(profileKey(uid), nextProfile);
+  return nextProfile;
 }
 
-// Explicit profile updates are separate from auth-time upserts so Profile.tsx
-// can save user edits without needing to know the full Firestore shape.
 export async function updateUserProfile(
   uid: string,
   updates: { displayName?: string }
 ) {
-  // Re-read the existing profile so partial UI updates do not accidentally wipe
-  // out fields that the screen is not editing.
   const existingProfile = await getUserProfile(uid);
 
-  await setDoc(
-    doc(db, "users", uid),
-    {
-      displayName: updates.displayName?.trim() || null,
-      privacyMode: "strict",
-      notificationsEnabled: existingProfile?.notificationsEnabled ?? false,
-      createdAt: existingProfile?.createdAt ?? new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  const nextProfile: UserProfile = {
+    displayName: updates.displayName?.trim() || undefined,
+    privacyMode: 'strict',
+    notificationsEnabled: existingProfile?.notificationsEnabled ?? false,
+    createdAt: existingProfile?.createdAt ?? new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  await writeJson(profileKey(uid), nextProfile);
+  return nextProfile;
 }
