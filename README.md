@@ -32,6 +32,7 @@ cd TapTag
 git checkout demo-mode
 npm install
 npm start
+then press S "switch to Expo Go"
 ```
 
 That is the intended tester flow.
