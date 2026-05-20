@@ -11,5 +11,16 @@ node_modules/
 /tapTag/.env
 /tapTag/.env.*
 
+# OpenClaw / local assistant state
+/.openclaw/
+/memory/
+/AGENTS.md
+/HEARTBEAT.md
+/IDENTITY.md
+/SESSION-MAP.md
+/SOUL.md
+/TOOLS.md
+/USER.md
+
 # OS/editor noise
 .DS_Store
