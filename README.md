@@ -36,6 +36,25 @@ npm start
 
 That is the intended tester flow.
 
+## Fastest Docker path
+
+If you want a zero-Node local tester path and browser-only demo access:
+
+```bash
+git clone <repo-url>
+cd TapTag
+git checkout docker-setup
+docker compose up --build
+```
+
+Then open:
+
+```text
+http://localhost:8080
+```
+
+This Docker flow is best for quick web demos. If you want Expo Go, Android emulator, or iOS simulator testing, use the normal `npm start` flow outside Docker.
+
 ## What happens after `npm start`
 
 Expo starts the app from the real project folder inside `tapTag/`.
@@ -81,6 +100,32 @@ npm run web
 
 ```bash
 npm run lint
+```
+
+### Docker build
+
+```bash
+npm run docker:build
+```
+
+### Docker run
+
+```bash
+npm run docker:run
+```
+
+Then open `http://localhost:8080`.
+
+### Docker compose
+
+```bash
+npm run docker:up
+```
+
+Stop it with:
+
+```bash
+npm run docker:down
 ```
 
 ## Root command behavior
@@ -168,7 +213,9 @@ If you want a consistent walkthrough for someone evaluating the app, use this ex
 
 ### Web
 
-`npm run web` is the easiest way to let someone click around quickly.
+`npm run web` is the easiest way to let someone click around quickly outside Docker.
+
+If you want the easiest shareable local browser demo with fewer machine-specific setup issues, use Docker and open `http://localhost:8080`.
 
 ### Phone with Expo Go
 
@@ -217,10 +264,14 @@ If you just want to validate the recommendation engine quickly, use **Lab** firs
 
 This README describes the **demo branch experience**.
 
-Other branches in this repo may still use backend services. If someone is testing `demo-mode`, they should follow this README and ignore older backend setup material.
+- use `demo-mode` for the normal local Node/Expo workflow
+- use `docker-setup` if you want the Dockerized web-demo workflow
+
+Other branches in this repo may still use backend services. If someone is testing `demo-mode` or `docker-setup`, they should follow this README and ignore older backend setup material.
 
 ## Where to read next
 
+- `DOCKER.md` for the Dockerized web-demo path
 - `tapTag/README.md` for the app-level demo walkthrough
 - `TAPTAG_CANONICAL_CONTEXT.md` for product intent
 - `CODEBASE_GUIDE.md` for codebase structure

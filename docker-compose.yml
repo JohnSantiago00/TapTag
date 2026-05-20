@@ -1,0 +1,8 @@
+services:
+  taptag-demo:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: taptag-demo:latest
+    ports:
+      - "8080:80"

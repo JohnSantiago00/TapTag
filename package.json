@@ -8,6 +8,10 @@
     "android": "npm run android --prefix tapTag",
     "ios": "npm run ios --prefix tapTag",
     "start:tunnel": "npm run start:tunnel --prefix tapTag",
-    "lint": "npm run lint --prefix tapTag"
+    "lint": "npm run lint --prefix tapTag",
+    "docker:build": "docker build -t taptag-demo .",
+    "docker:run": "docker run --rm -p 8080:80 taptag-demo",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
   }
 }

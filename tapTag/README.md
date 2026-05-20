@@ -35,6 +35,18 @@ npm start
 
 That should be enough to get the app running.
 
+## Docker option
+
+If you want a browser-only demo without installing Node locally, use the repository root on the `docker-setup` branch:
+
+```bash
+docker compose up --build
+```
+
+Then open `http://localhost:8080`.
+
+This branch's Docker path targets the web demo. Expo Go and native simulator flows still make more sense outside Docker.
+
 ## No Firebase required on this branch
 
 You do **not** need any of the following to test `demo-mode`:
@@ -100,6 +112,16 @@ Use this if Expo networking is unreliable on your machine or phone.
 ```bash
 npm run web
 ```
+
+### Dockerized web demo
+
+From the repo root on `docker-setup`:
+
+```bash
+npm run docker:up
+```
+
+Then open `http://localhost:8080`.
 
 ### Run lint
 
