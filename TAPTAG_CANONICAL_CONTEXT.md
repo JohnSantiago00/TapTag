@@ -53,7 +53,7 @@ Frontend:
 
 Backend/data:
 - Firebase Auth
-- Firestore
+- MongoDB Atlas behind the TapTag backend API
 
 Device capability currently used:
 - Expo Location
@@ -79,15 +79,16 @@ Implemented at a product level:
 - in-app nudge
 - minimal privacy-first user layer
 
-## Current Firestore reality
-Global collections:
+## Current data reality
+MongoDB collections:
 - `cards`
 - `brands`
 - `mcc_map`
+- `users`
+- `wallet`
+- `events`
 
-User-scoped data:
-- `users/{uid}`
-- `users/{uid}/wallet/{cardProductId}`
+The Expo app does not connect directly to MongoDB. It calls the backend API, and user-scoped routes require Firebase ID tokens.
 
 Official user profile shape:
 - `displayName` optional
@@ -216,7 +217,7 @@ Future logical entities may include:
 - NEARBY_CONTEXT
 - RECOMMENDATION_EVENT
 
-Important: these are future-facing logical entities. Do not assume all already exist as separate Firestore collections today.
+Important: these are future-facing logical entities. Do not assume all already exist as separate MongoDB collections today.
 
 ## Architecture principles to preserve
 - privacy-first storage

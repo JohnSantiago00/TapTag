@@ -1,18 +1,21 @@
 # TapTag
 
-TapTag is a privacy-first wallet intelligence app built with Expo, React Native, Firebase Auth, and Firestore.
+TapTag is a privacy-first wallet intelligence app built with Expo, React Native, Firebase Auth, a MongoDB-backed API, and MongoDB Atlas.
 
-The actual app lives in `tapTag/`, but this repo is now set up so a fresh clone can use root-level commands.
+The repo is split into:
 
-## Fast path
+- `frontend/` - Expo / React Native app
+- `backend/` - Express API, MongoDB seed/cleanup scripts, and auth-token verification
+
+## Fast Path
 
 ```bash
-git clone <repo-url>
-cd TapTag
 npm install
 npm run setup
-# fill in tapTag/.env with your Firebase project values
+# fill in frontend/.env with Firebase client values
+# fill in backend/.env with MongoDB URI and Firebase project id
 npm run first-run
+npm run api
 npm start
 ```
 
@@ -22,63 +25,47 @@ If Expo networking is flaky on your machine:
 npm run start:tunnel
 ```
 
-## What the root commands do
+The backend binds to `0.0.0.0:4000` by default. For a physical phone, set `EXPO_PUBLIC_TAPTAG_API_BASE_URL` in `frontend/.env` to your machine LAN or Tailscale URL, for example `http://100.x.y.z:4000`; do not use `0.0.0.0` as the client URL.
 
-These all proxy into the real Expo app inside `tapTag/`:
+## What The Root Commands Do
 
-- `npm start`
-- `npm run web`
-- `npm run android`
-- `npm run ios`
-- `npm run start:tunnel`
-- `npm run setup`
-- `npm run doctor`
-- `npm run first-run`
-- `npm run bootstrap`
-- `npm run bootstrap:client`
-- `npm run seed:knowledge`
-- `npm run cleanup:knowledge`
-- `npm run lint`
+- `npm start` - start the Expo app in LAN mode
+- `npm run api` - start the backend API on `0.0.0.0:4000`
+- `npm run setup` - create `frontend/.env` and `backend/.env` from examples
+- `npm run doctor` - validate frontend env and local setup
+- `npm run first-run` - validate setup and seed MongoDB knowledge data
+- `npm run test` - run backend API and frontend logic/API-client tests
+- `npm run smoke:api` - verify a running API has health and seeded knowledge data
+- `npm run seed:knowledge` - seed MongoDB card, brand, and MCC data
+- `npm run cleanup:knowledge` - remove known stale prototype MongoDB docs
+- `npm run lint` - run frontend ESLint
 
-So you do not have to remember to `cd tapTag` for normal setup and dev work.
+## Current Flows
 
-## First-run checklist
-
-1. Install dependencies with `npm install` from the repo root.
-2. Run `npm run setup` to create `tapTag/.env` from the template.
-3. Add your Firebase client config values.
-4. The simplest path is `npm run first-run`, which deploys the included Firestore rules and then seeds the app in client mode.
-5. If you do have a service account key, you can still place it at `tapTag/seed/serviceAccountKey.json` and use `npm run bootstrap`.
-6. Run `npm start` to launch Expo.
-
-## Firebase requirements
-
-Your Firebase project should have:
-
-- Email/Password auth enabled
-- Firestore created
-- Firestore rules that support your chosen local seeding path
-
-Notes:
-
-- The app uses `EXPO_PUBLIC_FIREBASE_*` env vars.
-- The seed and cleanup scripts prefer `GOOGLE_APPLICATION_CREDENTIALS` when a service account JSON exists.
-- `npm run first-run` is the best default for a fresh clone once `.env` is filled in.
-- `npm run bootstrap:client` forces the no-service-account path for fresh clones.
-- See `FIREBASE_SETUP.md` for the included rules, indexes, and deploy flow.
-
-## Current flows that work
-
-- sign up / log in
+- sign up / log in with Firebase Auth
 - add wallet card-product refs
 - run Lab merchant/category recommendation tests
 - test Nearby foreground recommendation nudges
 - inspect lightweight user profile and event tracking
 
-## Where to read next
+## Data Boundary
 
-- `tapTag/README.md` for app-specific setup and flows
-- `FIREBASE_SETUP.md` for Firebase rules, indexes, and bootstrap paths
+TapTag does not store card numbers, CVV, expiration dates, billing addresses, bank login credentials, or payment credentials.
+
+MongoDB stores:
+
+- global card product knowledge
+- brand/MCC knowledge
+- user profile defaults
+- wallet card-product references
+- lightweight user-scoped events
+
+## Where To Read Next
+
 - `TAPTAG_CANONICAL_CONTEXT.md` for product intent
 - `CODEBASE_GUIDE.md` for architecture
 - `CONFIG_GUIDE.md` for config file explanations
+- `DEPLOYMENT.md` for backend deployment and smoke checks
+- `QA_CHECKLIST.md` for real-device validation
+- `frontend/README.md` for app-specific setup
+- `FIREBASE_SETUP.md` for Firebase Auth and MongoDB setup notes

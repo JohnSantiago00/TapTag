@@ -2,28 +2,34 @@
 node_modules/
 
 # App-local dependencies and caches
-/tapTag/node_modules/
-/tapTag/.expo/
-/tapTag/dist/
-/tapTag/web-build/
+/frontend/node_modules/
+/frontend/.expo/
+/frontend/dist/
+/frontend/web-build/
+/backend/node_modules/
 
 # Local secrets and config
-/tapTag/.env
-/tapTag/.env.*
-!/tapTag/.env.example
+/frontend/.env
+/frontend/.env.*
+!/frontend/.env.example
+/backend/.env
+/backend/.env.*
+!/backend/.env.example
 /.firebaserc
-/tapTag/seed/serviceAccountKey.json
+/backend/seed/serviceAccountKey.json
 
 # OpenClaw / local assistant state
 /.openclaw/
 /memory/
 /AGENTS.md
+/DREAMS.md
 /HEARTBEAT.md
 /IDENTITY.md
 /SESSION-MAP.md
 /SOUL.md
 /TOOLS.md
 /USER.md
+/openclaw-workspace-state.json
 
 # OS/editor noise
 .DS_Store

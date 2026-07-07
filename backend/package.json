@@ -1,0 +1,23 @@
+{
+  "name": "taptag-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node ./src/server.mjs",
+    "dev": "node ./src/server.mjs",
+    "test": "node --test",
+    "smoke:api": "node ./scripts/smoke-api.mjs",
+    "setup": "node ./scripts/setup.mjs",
+    "seed:knowledge": "node ./seed/seedKnowledgeLayer.mjs",
+    "cleanup:knowledge": "node ./seed/cleanupKnowledgeLayer.mjs",
+    "bootstrap": "node ./seed/seedKnowledgeLayer.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "jose": "^6.1.3",
+    "mongodb": "^7.0.0"
+  }
+}
