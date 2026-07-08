@@ -14,6 +14,15 @@ export function getMongoConfig() {
   return { uri, dbName };
 }
 
+// mongodb+srv URIs (Atlas) always use TLS; plain mongodb:// URIs (local dev,
+// docker) usually do not. MONGODB_TLS=true|false overrides the detection for
+// non-srv deployments that still require TLS.
+function shouldUseTls(uri) {
+  if (process.env.MONGODB_TLS === 'true') return true;
+  if (process.env.MONGODB_TLS === 'false') return false;
+  return uri.startsWith('mongodb+srv://');
+}
+
 export async function getDb() {
   if (db) {
     return db;
@@ -22,7 +31,7 @@ export async function getDb() {
   const { uri, dbName } = getMongoConfig();
   client = new MongoClient(uri, {
     serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS || 15000),
-    tls: true,
+    ...(shouldUseTls(uri) ? { tls: true } : {}),
   });
   await client.connect();
   db = client.db(dbName);

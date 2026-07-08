@@ -274,4 +274,139 @@ describe('TapTag API app', () => {
     assert.equal(events.body[0].uid, undefined);
     assert.equal(events.body[0].eventType, 'wallet_updated');
   });
+
+  it('rejects unknown event types and strips non-whitelisted event fields', async () => {
+    const invalid = await request(baseUrl, '/api/users/me/events', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ eventType: 'made_up_event', source: 'wallet' }),
+    });
+    assert.equal(invalid.response.status, 400);
+
+    const withJunk = await request(baseUrl, '/api/users/me/events', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        eventType: 'wallet_updated',
+        source: 'wallet',
+        cardProductId: 'amex_gold',
+        injected: { $gt: '' },
+        metadata: { note: 'kept', '$where': 'dropped', nested: { obj: true } },
+      }),
+    });
+    assert.equal(withJunk.response.status, 201);
+
+    const events = await request(baseUrl, '/api/users/me/events', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(events.body[0].injected, undefined);
+    assert.equal(events.body[0].cardProductId, 'amex_gold');
+    assert.deepEqual(events.body[0].metadata, { note: 'kept' });
+  });
+
+  it('rejects malformed wallet card product ids', async () => {
+    const put = await request(baseUrl, '/api/users/me/wallet/not%20a%20valid%20id!', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(put.response.status, 400);
+  });
+
+  it('returns JSON 404 for unknown routes and 400 for malformed JSON bodies', async () => {
+    const missing = await request(baseUrl, '/api/does-not-exist');
+    assert.equal(missing.response.status, 404);
+    assert.deepEqual(missing.body, { error: 'Not found' });
+
+    const malformed = await request(baseUrl, '/api/users/me/profile', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: '{not json',
+    });
+    assert.equal(malformed.response.status, 400);
+    assert.deepEqual(malformed.body, { error: 'Invalid request' });
+  });
+
+  it('sets security headers and serves liveness without the database', async () => {
+    const livez = await request(baseUrl, '/livez');
+    assert.equal(livez.response.status, 200);
+    assert.deepEqual(livez.body, { ok: true });
+    assert.equal(livez.response.headers.get('x-content-type-options'), 'nosniff');
+    assert.equal(livez.response.headers.get('x-frame-options'), 'DENY');
+    assert.equal(livez.response.headers.get('x-powered-by'), null);
+
+    const profile = await request(baseUrl, '/api/users/me/profile', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(profile.response.headers.get('cache-control'), 'no-store');
+  });
+});
+
+describe('TapTag API resilience', () => {
+  async function withApp(options, run) {
+    const app = createTapTagApp({
+      getDb: async () => new FakeDb(),
+      requireFirebaseUser: (req, res, next) => next(),
+      logger: { error() {} },
+      ...options,
+    });
+    const server = app.listen(0);
+    await new Promise((resolve) => server.once('listening', resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+
+    try {
+      await run(baseUrl);
+    } finally {
+      await new Promise((resolve, reject) => {
+        server.close((error) => (error ? reject(error) : resolve()));
+      });
+    }
+  }
+
+  it('reports 503 from /health when the database is unreachable', async () => {
+    await withApp(
+      {
+        getDb: async () => {
+          throw new Error('connection refused');
+        },
+      },
+      async (baseUrl) => {
+        const health = await request(baseUrl, '/health');
+        assert.equal(health.response.status, 503);
+        assert.deepEqual(health.body, { ok: false });
+
+        const livez = await request(baseUrl, '/livez');
+        assert.equal(livez.response.status, 200);
+      }
+    );
+  });
+
+  it('rate limits clients that exceed the request budget', async () => {
+    await withApp({ rateLimit: { windowMs: 60_000, max: 2 } }, async (baseUrl) => {
+      const first = await request(baseUrl, '/livez');
+      assert.equal(first.response.status, 200);
+      assert.equal(first.response.headers.get('ratelimit-limit'), '2');
+
+      const second = await request(baseUrl, '/livez');
+      assert.equal(second.response.status, 200);
+      assert.equal(second.response.headers.get('ratelimit-remaining'), '0');
+
+      const third = await request(baseUrl, '/livez');
+      assert.equal(third.response.status, 429);
+      assert.deepEqual(third.body, { error: 'Too many requests' });
+      assert.ok(Number(third.response.headers.get('retry-after')) >= 1);
+    });
+  });
 });
