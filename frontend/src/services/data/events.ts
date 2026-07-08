@@ -15,6 +15,7 @@ export type TapTagEventType =
   | "recommendation_opened"
   | "recommendation_dismissed"
   | "payment_prompt_opened"
+  | "payment_wallet_opened"
   | "payment_prompt_confirmed"
   | "brand_muted"
   | "wallet_updated";

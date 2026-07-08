@@ -1,6 +1,11 @@
 import { useAuth } from "@/src/context/AuthContext";
 import { trackUserEvent } from "@/src/services/data/events";
-import { getWalletInstruction } from "@/src/services/paymentPrompt";
+import {
+  getWalletInstruction,
+  getWalletOpenButtonLabel,
+  openNativeWallet,
+} from "@/src/services/paymentPrompt";
+import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
 import {
@@ -63,6 +68,53 @@ export default function PayCardPrompt() {
     }
   }
 
+  async function handleOpenWallet() {
+    const result = await openNativeWallet();
+
+    if (user) {
+      try {
+        await trackUserEvent(user.uid, {
+          eventType: "payment_wallet_opened",
+          source: source === "nearby" ? "nearby" : "lab",
+          brandName: merchantName,
+          recommendedCardProductId,
+          recommendedCardName,
+          normalizedCategory,
+          merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : undefined,
+          metadata: {
+            platform: result.platform,
+            walletOpenResult: result.opened ? result.target : result.reason,
+            promptSource: source,
+          },
+        });
+      } catch (error) {
+        console.error("Error tracking wallet handoff:", error);
+      }
+    }
+
+    if (result.opened) {
+      const walletName =
+        result.target === "apple_wallet"
+          ? "Apple Wallet"
+          : result.target === "google_wallet"
+            ? "Google Wallet"
+            : "Google Wallet install page";
+      setStatus(
+        `${walletName} opened. Choose ${recommendedCardName}, then continue at the reader.`
+      );
+      return;
+    }
+
+    if (result.reason === "unsupported_platform") {
+      setStatus("Wallet handoff is only available from the iOS or Android app.");
+      return;
+    }
+
+    setStatus(
+      `Could not open the wallet app automatically. Manually open Wallet, choose ${recommendedCardName}, then continue at the reader.`
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -101,6 +153,11 @@ export default function PayCardPrompt() {
             <Text style={styles.statusText}>{status}</Text>
           </View>
         ) : null}
+
+        <TouchableOpacity style={styles.walletButton} onPress={handleOpenWallet}>
+          <Ionicons name="wallet-outline" size={18} color="#00131f" />
+          <Text style={styles.walletButtonText}>{getWalletOpenButtonLabel()}</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.primaryButton} onPress={handleUsedCard}>
           <Text style={styles.primaryButtonText}>I Used This Card</Text>
@@ -202,6 +259,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
     marginBottom: 12,
+  },
+  walletButton: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  walletButtonText: {
+    color: "#00131f",
+    fontSize: 15,
+    fontWeight: "800",
   },
   primaryButtonText: {
     color: "#00131f",

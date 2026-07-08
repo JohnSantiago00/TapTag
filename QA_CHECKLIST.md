@@ -29,6 +29,8 @@
 - Select several merchants across Dining, Groceries, Gas, Travel, Transportation, Entertainment, and Online Shopping.
 - Confirm the recommended card and explanation match the reward rules.
 - Tap Show Pay Prompt and confirm the prompt shows the card, merchant, reward reason, and wallet instruction.
+- Tap Open Apple Wallet or Open Google Wallet and confirm the OS routes toward Wallet.
+- Return to TapTag and confirm the prompt shows a wallet handoff status message.
 - Tap I Used This Card and confirm the confirmation message appears.
 - Tap Send Test Notification, then tap the notification and confirm it opens the same pay prompt.
 - Return to Wallet, change selected cards, then return to Lab and confirm the recommendation refreshes.
@@ -47,7 +49,7 @@
 
 - Save a display name.
 - Confirm selected wallet count is accurate.
-- Confirm recent events appear after Wallet, Lab, Nearby, payment prompt open, and I Used This Card actions.
+- Confirm recent events appear after Wallet, Lab, Nearby, payment prompt open, wallet handoff, and I Used This Card actions.
 - Temporarily stop the API and confirm Profile shows a retryable load error.
 
 ## Privacy Boundary

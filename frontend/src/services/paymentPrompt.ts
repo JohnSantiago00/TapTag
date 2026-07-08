@@ -1,6 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Href } from "expo-router";
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 
 export const PAYMENT_PROMPT_NOTIFICATION_CATEGORY = "payment-recommendation";
 const PAYMENT_PROMPT_NOTIFICATION_TYPE = "payment_prompt";
@@ -19,6 +19,20 @@ export type PaymentPromptInput = {
 };
 
 export type PaymentPromptParams = Record<string, string>;
+
+export type WalletOpenResult =
+  | {
+      opened: true;
+      platform: typeof Platform.OS;
+      target: "apple_wallet" | "google_wallet" | "google_wallet_store";
+      url: string;
+    }
+  | {
+      opened: false;
+      platform: typeof Platform.OS;
+      reason: "unsupported_platform" | "open_failed";
+      attemptedUrls: string[];
+    };
 
 let notificationsConfigured = false;
 
@@ -53,14 +67,59 @@ export function buildPaymentPromptHref(input: PaymentPromptInput): Href {
 
 export function getWalletInstruction(cardName: string) {
   if (Platform.OS === "ios") {
-    return `Double-click the side button, choose ${cardName}, then hold iPhone near the reader.`;
+    return `Tap Open Wallet, double-click the side button, choose ${cardName}, then hold iPhone near the reader.`;
   }
 
   if (Platform.OS === "android") {
-    return `Open Google Wallet, choose ${cardName}, then hold your phone near the reader.`;
+    return `Tap Open Wallet, choose ${cardName}, then hold your phone near the reader.`;
   }
 
   return `Open your phone wallet, choose ${cardName}, then hold your phone near the reader.`;
+}
+
+export function getWalletOpenButtonLabel() {
+  if (Platform.OS === "ios") return "Open Apple Wallet";
+  if (Platform.OS === "android") return "Open Google Wallet";
+  return "Open Wallet";
+}
+
+export async function openNativeWallet(): Promise<WalletOpenResult> {
+  if (Platform.OS === "ios") {
+    return openFirstAvailable([
+      {
+        target: "apple_wallet" as const,
+        url: "wallet://",
+      },
+    ]);
+  }
+
+  if (Platform.OS === "android") {
+    return openFirstAvailable([
+      {
+        target: "google_wallet" as const,
+        url: "intent://pay/#Intent;scheme=googlewallet;package=com.google.android.apps.walletnfcrel;end",
+      },
+      {
+        target: "google_wallet" as const,
+        url: "googlewallet://",
+      },
+      {
+        target: "google_wallet_store" as const,
+        url: "market://details?id=com.google.android.apps.walletnfcrel",
+      },
+      {
+        target: "google_wallet_store" as const,
+        url: "https://play.google.com/store/apps/details?id=com.google.android.apps.walletnfcrel",
+      },
+    ]);
+  }
+
+  return {
+    opened: false,
+    platform: Platform.OS,
+    reason: "unsupported_platform",
+    attemptedUrls: [],
+  };
 }
 
 export function getPaymentPromptNotificationData(input: PaymentPromptInput) {
@@ -143,4 +202,36 @@ function cleanParams(values: Record<string, unknown>): PaymentPromptParams {
     params[key] = String(value);
     return params;
   }, {});
+}
+
+async function openFirstAvailable(
+  candidates: {
+    target: "apple_wallet" | "google_wallet" | "google_wallet_store";
+    url: string;
+  }[]
+): Promise<WalletOpenResult> {
+  const attemptedUrls: string[] = [];
+
+  for (const candidate of candidates) {
+    attemptedUrls.push(candidate.url);
+
+    try {
+      await Linking.openURL(candidate.url);
+      return {
+        opened: true,
+        platform: Platform.OS,
+        target: candidate.target,
+        url: candidate.url,
+      };
+    } catch (error) {
+      console.warn("Could not open wallet target:", candidate.url, error);
+    }
+  }
+
+  return {
+    opened: false,
+    platform: Platform.OS,
+    reason: "open_failed",
+    attemptedUrls,
+  };
 }
