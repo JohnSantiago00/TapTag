@@ -51,23 +51,53 @@ export async function upsertUserProfile(
   profile?: { displayName?: string }
 ) {
   void uid;
+  const body: Record<string, unknown> = {};
+  const displayName = profile?.displayName?.trim();
+
+  if (displayName) {
+    body.displayName = displayName;
+  }
+
   await apiRequest<UserProfile>("/api/users/me/profile", {
     method: "PUT",
     authRequired: true,
-    body: { displayName: profile?.displayName ?? null },
+    body,
   });
 }
 
 // Explicit profile updates are separate from auth-time upserts so Profile.tsx
 // can save user edits without needing to know the full backend persistence shape.
+// Only the fields present in `updates` are sent; the backend preserves the rest.
 export async function updateUserProfile(
   uid: string,
-  updates: { displayName?: string }
-) {
+  updates: { displayName?: string; notificationsEnabled?: boolean }
+): Promise<UserProfile> {
   void uid;
-  await apiRequest<UserProfile>("/api/users/me/profile", {
+  const body: Record<string, unknown> = {};
+
+  if ("displayName" in updates) {
+    body.displayName = updates.displayName?.trim() || null;
+  }
+  if (typeof updates.notificationsEnabled === "boolean") {
+    body.notificationsEnabled = updates.notificationsEnabled;
+  }
+
+  const profile = await apiRequest<UserProfile>("/api/users/me/profile", {
     method: "PUT",
     authRequired: true,
-    body: { displayName: updates.displayName?.trim() || null },
+    body,
+  });
+
+  return normalizeUserProfile(profile);
+}
+
+// Account deletion removes every user-scoped document (profile, wallet refs,
+// events, companion pass). The caller is responsible for deleting the Firebase
+// Auth user afterwards.
+export async function deleteUserAccount(uid: string) {
+  void uid;
+  await apiRequest<void>("/api/users/me", {
+    method: "DELETE",
+    authRequired: true,
   });
 }

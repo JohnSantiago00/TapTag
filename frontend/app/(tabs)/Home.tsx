@@ -1,58 +1,116 @@
-import { useRouter } from "expo-router";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { useAuth } from "../../src/context/AuthContext";
+import { getRecentUserEvents, TapTagEvent } from "../../src/services/data/events";
+import { getUserProfile } from "../../src/services/data/userProfile";
+import { getUserWallet } from "../../src/services/data/wallet";
 
 /*
   File role:
-  Home is the orientation screen for the whole beta.
+  Home is the orientation screen for the whole app.
 
-  It does not perform core recommendation logic itself. Instead, it explains the
-  product clearly and routes the tester toward the screens that prove the main
-  loop, Wallet, Lab, Nearby, and Profile.
+  It does not perform core recommendation logic itself. Instead, it greets the
+  user, shows live setup progress derived from real account state, and routes
+  toward the screens that prove the main loop: Wallet, Lab, Nearby, Profile.
 */
 
-// Home is the product framing screen. It explains what TapTag is, what works
-// now, and where a tester should go next.
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [walletCount, setWalletCount] = useState(0);
+  const [recentEvents, setRecentEvents] = useState<TapTagEvent[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
-  // The checklist is intentionally lightweight. Right now only auth state is
-  // automatically known here, the rest remain manual tester prompts.
+  const loadHomeState = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const [profile, wallet, events] = await Promise.all([
+        getUserProfile(user.uid),
+        getUserWallet(user.uid),
+        getRecentUserEvents(user.uid, 50),
+      ]);
+
+      setDisplayName(profile?.displayName ?? null);
+      setWalletCount(wallet.filter((item) => item.enabled).length);
+      setRecentEvents(events);
+    } catch (error) {
+      // Home should stay usable even when the API is briefly unreachable; the
+      // checklist simply reflects what is known.
+      console.error("Error loading home state:", error);
+    } finally {
+      setLoaded(true);
+    }
+  }, [user]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHomeState();
+    }, [loadHomeState])
+  );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadHomeState();
+    setRefreshing(false);
+  }, [loadHomeState]);
+
+  // Each checklist item is derived from real account state, so this doubles as
+  // a live setup progress view instead of a manual to-do list.
+  const hasEvent = (predicate: (event: TapTagEvent) => boolean) =>
+    recentEvents.some(predicate);
+
   const checklist = [
     { label: "Signed in", done: Boolean(user) },
-    { label: "Wallet configured", done: false },
-    { label: "Lab recommendation tested", done: false },
-    { label: "Nearby nudge tested", done: false },
-    { label: "Event tracking verified", done: false },
+    { label: "Wallet configured", done: walletCount > 0 },
+    {
+      label: "Lab recommendation tested",
+      done: hasEvent((event) => event.source === "lab"),
+    },
+    {
+      label: "Nearby nudge tested",
+      done: hasEvent((event) => event.source === "nearby"),
+    },
+    { label: "Activity tracking verified", done: recentEvents.length > 0 },
   ];
+  const completedCount = checklist.filter((item) => item.done).length;
+  const setupComplete = completedCount === checklist.length;
+
+  const greeting = displayName ? `Welcome back, ${displayName}` : "Welcome to TapTag";
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          tintColor="#0af"
+        />
+      }
+    >
       <Text style={styles.title}>TapTag</Text>
-      <Text style={styles.subtitle}>
-        A privacy-first wallet intelligence app for the cards you already own.
+      <Text style={styles.subtitle}>{greeting}</Text>
+      <Text style={styles.tagline}>
+        The right card from your wallet, for every merchant — without storing
+        card numbers, CVV, or bank credentials.
       </Text>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What TapTag is</Text>
-        <Text style={styles.cardText}>
-          TapTag helps you choose the best card product from your selected
-          wallet based on merchant and category context, without storing card
-          numbers, CVV, expiration dates, or bank credentials.
+        <Text style={styles.cardTitle}>
+          {setupComplete ? "You're all set" : `Setup progress (${completedCount}/${checklist.length})`}
         </Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Quick Start</Text>
-        <Text style={styles.cardText}>1. Open Wallet and select the cards you own.</Text>
-        <Text style={styles.cardText}>2. Open Lab to test recommendations by merchant.</Text>
-        <Text style={styles.cardText}>3. Open Nearby to test live foreground suggestions.</Text>
-        <Text style={styles.cardText}>4. Open Profile to verify event tracking is working.</Text>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Beta Readiness Checklist</Text>
         {checklist.map((item) => (
           <View key={item.label} style={styles.checklistRow}>
             <Text style={[styles.checklistIcon, item.done && styles.checklistIconDone]}>
@@ -63,9 +121,13 @@ export default function Home() {
             </Text>
           </View>
         ))}
-        <Text style={styles.helperNote}>
-          The first item updates automatically. The rest are your quick tester checklist for this beta slice.
-        </Text>
+        {loaded && !setupComplete ? (
+          <Text style={styles.helperNote}>
+            {walletCount === 0
+              ? "Start by adding the cards you own in Wallet."
+              : "Try a recommendation in Lab, then test a live nudge in Nearby."}
+          </Text>
+        ) : null}
       </View>
 
       <View style={styles.actionsRow}>
@@ -89,27 +151,21 @@ export default function Home() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>What works now</Text>
-        <Text style={styles.cardText}>
-          The app supports sign-in, seeded MongoDB knowledge data, wallet
-          selection by card-product reference, Lab-based merchant testing,
-          foreground nearby checks, in-app nudge actions, and lightweight event
-          tracking.
-        </Text>
+        <Text style={styles.cardTitle}>How TapTag works</Text>
+        <Text style={styles.cardText}>1. Add the cards you own in Wallet.</Text>
+        <Text style={styles.cardText}>2. Lab shows the best card for a chosen merchant.</Text>
+        <Text style={styles.cardText}>3. Nearby suggests the best card when you are close to a merchant.</Text>
+        <Text style={styles.cardText}>4. Profile shows your settings and recent activity.</Text>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.cardTitle}>Beta focus</Text>
+        <Text style={styles.cardTitle}>Privacy first</Text>
         <Text style={styles.cardText}>
-          The goal now is clarity and usefulness. TapTag should feel easy to
-          understand, easy to test, and obviously privacy-first.
+          TapTag stores card-product references only. It never stores card
+          numbers, CVV, expiration dates, billing addresses, or bank
+          credentials, and it never keeps a history of your exact location.
         </Text>
       </View>
-
-      <Text style={styles.footer}>
-        Use Wallet to choose your cards, Lab to inspect recommendations, Nearby
-        to test location checks, and Profile to confirm recent events.
-      </Text>
     </ScrollView>
   );
 }
@@ -127,12 +183,18 @@ const styles = StyleSheet.create({
     color: "#0af",
     fontSize: 30,
     fontWeight: "700",
-    marginBottom: 8,
+    marginBottom: 4,
   },
   subtitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 6,
+  },
+  tagline: {
     color: "#ddd",
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 21,
     marginBottom: 20,
   },
   card: {
@@ -195,11 +257,5 @@ const styles = StyleSheet.create({
     color: "#ddd",
     fontSize: 15,
     lineHeight: 21,
-  },
-  footer: {
-    color: "#888",
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 8,
   },
 });

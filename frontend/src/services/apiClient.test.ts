@@ -79,6 +79,37 @@ describe("createApiClient", () => {
       /Could not reach the TapTag API/
     );
   });
+
+  it("aborts requests that exceed the timeout with a clear message", async () => {
+    const client = createApiClient({
+      baseUrl: "http://api.test",
+      fetchImpl: (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new Error("Aborted"))
+          );
+        }),
+    });
+
+    await assert.rejects(
+      () => client.apiRequest("/health", { timeoutMs: 20 }),
+      /took too long to respond/
+    );
+  });
+
+  it("passes an abort signal to fetch", async () => {
+    let capturedSignal: AbortSignal | null | undefined;
+    const client = createApiClient({
+      baseUrl: "http://api.test",
+      fetchImpl: async (_url, init) => {
+        capturedSignal = init?.signal;
+        return jsonResponse({ ok: true });
+      },
+    });
+
+    await client.apiRequest("/health");
+    assert.ok(capturedSignal instanceof AbortSignal);
+  });
 });
 
 function jsonResponse(body: unknown, status = 200) {

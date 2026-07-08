@@ -1,6 +1,7 @@
 import { auth } from "@/src/config/firebase";
 import { useAuth } from "@/src/context/AuthContext";
 import {
+  deleteUserAccount,
   getUserProfile,
   updateUserProfile,
   UserProfile,
@@ -10,13 +11,20 @@ import {
   TapTagEvent,
 } from "@/src/services/data/events";
 import { getUserWallet } from "@/src/services/data/wallet";
-import { signOut } from "firebase/auth";
+import {
+  deleteUser,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  signOut,
+} from "firebase/auth";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -43,36 +51,54 @@ export default function Profile() {
   const [walletCount, setWalletCount] = useState(0);
   const [recentEvents, setRecentEvents] = useState<TapTagEvent[]>([]);
   const [draftDisplayName, setDraftDisplayName] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
   // Profile data spans three sources, user profile doc, wallet refs, and recent
   // events. Loading them together keeps the screen coherent.
-  const loadProfile = useCallback(async () => {
-    if (!user) return;
+  const loadProfile = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!user) {
+        setProfile(null);
+        setDraftDisplayName("");
+        setNotificationsEnabled(false);
+        setWalletCount(0);
+        setRecentEvents([]);
+        setLoading(false);
+        return;
+      }
 
-    try {
-      setLoading(true);
-      setStatus(null);
+      try {
+        if (!silent) setLoading(true);
+        setStatus(null);
 
-      const [loadedProfile, wallet, events] = await Promise.all([
-        getUserProfile(user.uid),
-        getUserWallet(user.uid),
-        getRecentUserEvents(user.uid, 8),
-      ]);
+        const [loadedProfile, wallet, events] = await Promise.all([
+          getUserProfile(user.uid),
+          getUserWallet(user.uid),
+          getRecentUserEvents(user.uid, 8),
+        ]);
 
-      setProfile(loadedProfile);
-      setDraftDisplayName(loadedProfile?.displayName ?? "");
-      setWalletCount(wallet.filter((item) => item.enabled).length);
-      setRecentEvents(events);
-    } catch (error) {
-      console.error("Error loading profile:", error);
-      setStatus("Could not load your profile right now.");
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+        setProfile(loadedProfile);
+        setDraftDisplayName(loadedProfile?.displayName ?? "");
+        setNotificationsEnabled(Boolean(loadedProfile?.notificationsEnabled));
+        setWalletCount(wallet.filter((item) => item.enabled).length);
+        setRecentEvents(events);
+      } catch (error) {
+        console.error("Error loading profile:", error);
+        setStatus("Could not load your profile right now.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [user]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -84,6 +110,12 @@ export default function Profile() {
     }, [loadProfile, user])
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadProfile({ silent: true });
+    setRefreshing(false);
+  }, [loadProfile]);
+
   // Save is intentionally narrow, only displayName is editable today. The rest
   // of the profile shape is managed by product defaults.
   const handleSave = async () => {
@@ -92,14 +124,126 @@ export default function Profile() {
     try {
       setSaving(true);
       setStatus(null);
-      await updateUserProfile(user.uid, { displayName: draftDisplayName });
-      await loadProfile();
+      const savedProfile = await updateUserProfile(user.uid, {
+        displayName: draftDisplayName,
+      });
+      setProfile(savedProfile);
+      setDraftDisplayName(savedProfile.displayName ?? "");
+      setNotificationsEnabled(savedProfile.notificationsEnabled);
       setStatus("Profile saved.");
     } catch (error) {
       console.error("Error saving profile:", error);
       setStatus("Could not save your profile right now.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleNotificationToggle = async (enabled: boolean) => {
+    if (!user || savingNotifications) return;
+
+    const previousValue = notificationsEnabled;
+    setNotificationsEnabled(enabled);
+    setProfile((current) =>
+      current
+        ? {
+            ...current,
+            notificationsEnabled: enabled,
+            updatedAt: new Date().toISOString(),
+          }
+        : current
+    );
+
+    try {
+      setSavingNotifications(true);
+      setStatus(null);
+      const savedProfile = await updateUserProfile(user.uid, {
+        notificationsEnabled: enabled,
+      });
+      setProfile(savedProfile);
+      setNotificationsEnabled(savedProfile.notificationsEnabled);
+      setStatus(
+        savedProfile.notificationsEnabled
+          ? "Nearby notifications enabled."
+          : "Nearby notifications disabled."
+      );
+    } catch (error) {
+      console.error("Error saving notification preference:", error);
+      setNotificationsEnabled(previousValue);
+      setProfile((current) =>
+        current
+          ? {
+              ...current,
+              notificationsEnabled: previousValue,
+            }
+          : current
+      );
+      setStatus("Could not save notification preference right now.");
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const getDeleteErrorMessage = (code?: string, appDataDeleted = false) => {
+    if (appDataDeleted) {
+      return "TapTag app data was deleted, but the login account could not be removed. Sign out and back in, then try again.";
+    }
+
+    switch (code) {
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        return "Password did not match this account.";
+      case "auth/too-many-requests":
+        return "Too many delete attempts. Try again later.";
+      case "auth/network-request-failed":
+        return "Network error. Check your connection and try again.";
+      default:
+        return "Could not delete your account right now.";
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user || deleting) return;
+
+    if (!user.email) {
+      setStatus("Account deletion requires an email/password account in this build.");
+      return;
+    }
+
+    if (!deletePassword.trim()) {
+      setStatus("Enter your password before deleting your account.");
+      return;
+    }
+
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      setStatus("Tap Delete Account again to permanently remove your TapTag account.");
+      return;
+    }
+
+    let appDataDeleted = false;
+
+    try {
+      setDeleting(true);
+      setStatus(null);
+
+      const credential = EmailAuthProvider.credential(user.email, deletePassword);
+      await reauthenticateWithCredential(user, credential);
+      await deleteUserAccount(user.uid);
+      appDataDeleted = true;
+      await deleteUser(user);
+    } catch (error: any) {
+      console.error("Error deleting account:", error);
+      if (appDataDeleted) {
+        setProfile(null);
+        setWalletCount(0);
+        setRecentEvents([]);
+      }
+      setStatus(getDeleteErrorMessage(error?.code, appDataDeleted));
+    } finally {
+      setDeleting(false);
+      setDeleteArmed(false);
+      setDeletePassword("");
     }
   };
 
@@ -184,7 +328,16 @@ export default function Profile() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#0af"
+          />
+        }
+      >
         <Text style={styles.title}>Profile</Text>
         <Text style={styles.subtitle}>
           Lightweight user settings, privacy-first by default.
@@ -211,20 +364,36 @@ export default function Profile() {
             disabled={saving}
           >
             <Text style={styles.primaryButtonText}>
-              {saving ? "Saving..." : "Save Display Name"}
+              {saving ? "Saving..." : "Save Profile"}
             </Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Privacy Defaults</Text>
+          <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
           <Text style={styles.label}>Privacy Mode</Text>
           <Text style={styles.value}>{profile?.privacyMode ?? "strict"}</Text>
 
-          <Text style={styles.label}>Notifications Enabled</Text>
-          <Text style={styles.value}>
-            {profile?.notificationsEnabled ? "Yes" : "No"}
-          </Text>
+          <View style={styles.settingRow}>
+            <View style={styles.settingCopy}>
+              <Text style={styles.settingTitle}>Nearby notifications</Text>
+              <Text style={styles.settingBody}>
+                Allow TapTag to schedule local payment prompts when Nearby finds
+                a card recommendation. In-app nudges still work when this is off.
+              </Text>
+            </View>
+            <Switch
+              value={notificationsEnabled}
+              onValueChange={handleNotificationToggle}
+              disabled={savingNotifications}
+              trackColor={{ false: "#333", true: "#075f8f" }}
+              thumbColor={notificationsEnabled ? "#0af" : "#f4f4f4"}
+              accessibilityLabel="Toggle nearby notifications"
+            />
+          </View>
+          {savingNotifications ? (
+            <Text style={styles.smallStatus}>Saving notification preference...</Text>
+          ) : null}
 
           <Text style={styles.label}>Selected Wallet Cards</Text>
           <Text style={styles.value}>{walletCount}</Text>
@@ -296,11 +465,58 @@ export default function Profile() {
           </Text>
         </View>
 
+        <View style={styles.dangerCard}>
+          <Text style={styles.dangerTitle}>Delete Account</Text>
+          <Text style={styles.bodyText}>
+            Permanently removes your TapTag profile, wallet refs, recent events,
+            companion pass preview, and Firebase login.
+          </Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Current password"
+            placeholderTextColor="#666"
+            value={deletePassword}
+            onChangeText={(value) => {
+              setDeletePassword(value);
+              if (deleteArmed) setDeleteArmed(false);
+            }}
+            secureTextEntry
+            autoComplete="current-password"
+          />
+          <TouchableOpacity
+            style={[
+              styles.deleteButton,
+              (deleting || !deletePassword.trim()) && styles.disabledButton,
+            ]}
+            onPress={handleDeleteAccount}
+            disabled={deleting || !deletePassword.trim()}
+          >
+            <Text style={styles.deleteButtonText}>
+              {deleting
+                ? "Deleting..."
+                : deleteArmed
+                  ? "Confirm Delete Account"
+                  : "Delete Account"}
+            </Text>
+          </TouchableOpacity>
+          {deleteArmed ? (
+            <TouchableOpacity
+              style={styles.cancelDeleteButton}
+              onPress={() => {
+                setDeleteArmed(false);
+                setStatus(null);
+              }}
+            >
+              <Text style={styles.cancelDeleteText}>Cancel deletion</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
         {status ? (
           <View style={styles.statusCard}>
             <Text style={styles.status}>{status}</Text>
             {status.startsWith("Could not load") ? (
-              <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+              <TouchableOpacity style={styles.retryButton} onPress={() => loadProfile()}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             ) : null}
@@ -350,7 +566,7 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#111",
-    borderRadius: 12,
+    borderRadius: 8,
     padding: 16,
     marginBottom: 12,
   },
@@ -371,6 +587,32 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     lineHeight: 21,
+  },
+  settingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 14,
+    marginTop: 12,
+  },
+  settingCopy: {
+    flex: 1,
+  },
+  settingTitle: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  settingBody: {
+    color: "#aaa",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  smallStatus: {
+    color: "#8ecfff",
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
   },
   bodyText: {
     color: "#ddd",
@@ -448,9 +690,45 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+  dangerCard: {
+    backgroundColor: "#160d0d",
+    borderColor: "#4d2424",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+    padding: 16,
+  },
+  dangerTitle: {
+    color: "#ff8a8a",
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  deleteButton: {
+    alignItems: "center",
+    backgroundColor: "#b83333",
+    borderRadius: 8,
+    marginTop: 12,
+    paddingVertical: 12,
+  },
+  deleteButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  cancelDeleteButton: {
+    alignItems: "center",
+    marginTop: 10,
+    paddingVertical: 8,
+  },
+  cancelDeleteText: {
+    color: "#ffb0b0",
+    fontSize: 14,
+    fontWeight: "600",
+  },
   statusCard: {
     backgroundColor: "#111822",
-    borderRadius: 10,
+    borderRadius: 8,
     padding: 14,
     marginBottom: 12,
   },

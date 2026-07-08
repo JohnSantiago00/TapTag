@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -49,7 +50,11 @@ export default function Lab() {
   const [wallet, setWallet] = useState<WalletCardRef[]>([]);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The raw knowledge-layer dump is a debugging surface, so it stays collapsed
+  // unless someone explicitly asks for it.
+  const [showKnowledgeData, setShowKnowledgeData] = useState(false);
   const lastTrackedRecommendationKey = useRef<string | null>(null);
 
   // The screen depends on four data sources, cards, brands, MCC mappings, and
@@ -97,6 +102,12 @@ export default function Lab() {
       loadKnowledgeLayer();
     }, [loadKnowledgeLayer, user])
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadKnowledgeLayer();
+    setRefreshing(false);
+  }, [loadKnowledgeLayer]);
 
   // These derived values are the actual TapTag decision chain. Reading this
   // block top-to-bottom is the fastest way to understand the product logic.
@@ -264,7 +275,17 @@ export default function Lab() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#0af"
+          />
+        }
+      >
         <Text style={styles.title}>TapTag Lab</Text>
         <Text style={styles.subtitle}>
           Guided merchant testing for the recommendation engine.
@@ -346,9 +367,24 @@ export default function Lab() {
         </View>
 
         <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.debugToggle}
+            onPress={() => setShowKnowledgeData((current) => !current)}
+          >
+            <Text style={styles.debugToggleText}>
+              {showKnowledgeData
+                ? "Hide knowledge data"
+                : "Show knowledge data (debug)"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {showKnowledgeData ? (
+          <>
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>Knowledge Layer Snapshot</Text>
           <Text style={styles.helperText}>
-            This is still available for debugging, but the primary tester flow is the recommendation result above.
+            Raw seeded data behind the recommendation above, for debugging.
           </Text>
         </View>
 
@@ -416,6 +452,8 @@ export default function Lab() {
             </View>
           ))}
         </View>
+          </>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
@@ -598,6 +636,19 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     marginBottom: 10,
+  },
+  debugToggle: {
+    backgroundColor: "#111",
+    borderColor: "#2a2a2a",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  debugToggleText: {
+    color: "#888",
+    fontSize: 14,
+    fontWeight: "600",
   },
   tipCard: {
     backgroundColor: "#111822",

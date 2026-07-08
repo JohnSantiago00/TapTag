@@ -284,23 +284,29 @@ export function createTapTagApp({
     const db = await getDb();
     const existing = await db.collection('users').findOne({ uid: req.user.uid });
     const now = nowIso();
-    const displayName =
-      typeof req.body?.displayName === 'string' && req.body.displayName.trim()
-        ? req.body.displayName.trim().slice(0, 80)
-        : null;
+    const body = req.body ?? {};
+    const profileUpdate = {
+      privacyMode: 'strict',
+      notificationsEnabled:
+        typeof body.notificationsEnabled === 'boolean'
+          ? body.notificationsEnabled
+          : typeof existing?.notificationsEnabled === 'boolean'
+            ? existing.notificationsEnabled
+            : false,
+      updatedAt: now,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, 'displayName')) {
+      profileUpdate.displayName =
+        typeof body.displayName === 'string' && body.displayName.trim()
+          ? body.displayName.trim().slice(0, 80)
+          : null;
+    }
 
     await db.collection('users').updateOne(
       { uid: req.user.uid },
       {
-        $set: {
-          displayName,
-          privacyMode: 'strict',
-          notificationsEnabled:
-            typeof existing?.notificationsEnabled === 'boolean'
-              ? existing.notificationsEnabled
-              : false,
-          updatedAt: now,
-        },
+        $set: profileUpdate,
         $setOnInsert: {
           uid: req.user.uid,
           createdAt: now,
@@ -311,6 +317,16 @@ export function createTapTagApp({
 
     const saved = await db.collection('users').findOne({ uid: req.user.uid });
     res.json(profileFromDoc(saved));
+  });
+
+  app.delete('/api/users/me', async (req, res) => {
+    const db = await getDb();
+    await Promise.all(
+      ['users', 'wallet', 'events', 'companion_passes'].map((collectionName) =>
+        db.collection(collectionName).deleteMany({ uid: req.user.uid })
+      )
+    );
+    res.status(204).end();
   });
 
   app.get('/api/users/me/wallet', async (req, res) => {

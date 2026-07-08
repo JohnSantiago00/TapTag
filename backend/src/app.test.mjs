@@ -62,6 +62,12 @@ class FakeCollection {
     return { deletedCount: before - this.docs.length };
   }
 
+  async deleteMany(filter) {
+    const before = this.docs.length;
+    this.docs = this.docs.filter((doc) => !matches(doc, filter));
+    return { deletedCount: before - this.docs.length };
+  }
+
   async insertOne(doc) {
     const id = `event_${this.docs.length + 1}`;
     const saved = {
@@ -180,6 +186,116 @@ describe('TapTag API app', () => {
     assert.equal(saved.body.displayName, 'John');
     assert.equal(saved.body.privacyMode, 'strict');
     assert.equal(saved.body.notificationsEnabled, false);
+  });
+
+  it('persists profile notification preferences', async () => {
+    const saved = await request(baseUrl, '/api/users/me/profile', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ notificationsEnabled: true }),
+    });
+
+    assert.equal(saved.response.status, 200);
+    assert.equal(saved.body.notificationsEnabled, true);
+
+    const loaded = await request(baseUrl, '/api/users/me/profile', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(loaded.response.status, 200);
+    assert.equal(loaded.body.notificationsEnabled, true);
+  });
+
+  it('preserves display names when updating only notification preferences', async () => {
+    const named = await request(baseUrl, '/api/users/me/profile', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ displayName: '  Jane  ', notificationsEnabled: true }),
+    });
+    assert.equal(named.response.status, 200);
+    assert.equal(named.body.displayName, 'Jane');
+
+    const updated = await request(baseUrl, '/api/users/me/profile', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ notificationsEnabled: false }),
+    });
+
+    assert.equal(updated.response.status, 200);
+    assert.equal(updated.body.displayName, 'Jane');
+    assert.equal(updated.body.notificationsEnabled, false);
+  });
+
+  it('deletes the authenticated user account data', async () => {
+    const profile = await request(baseUrl, '/api/users/me/profile', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ displayName: 'Jane' }),
+    });
+    assert.equal(profile.response.status, 200);
+
+    const wallet = await request(baseUrl, '/api/users/me/wallet/amex_gold', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ nickname: 'Food card' }),
+    });
+    assert.equal(wallet.response.status, 204);
+
+    const event = await request(baseUrl, '/api/users/me/events', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ eventType: 'wallet_updated', source: 'wallet' }),
+    });
+    assert.equal(event.response.status, 201);
+
+    const removed = await request(baseUrl, '/api/users/me', {
+      method: 'DELETE',
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(removed.response.status, 204);
+    assert.equal(removed.body, undefined);
+
+    const loadedProfile = await request(baseUrl, '/api/users/me/profile', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(loadedProfile.response.status, 200);
+    assert.equal(loadedProfile.body, null);
+
+    const loadedWallet = await request(baseUrl, '/api/users/me/wallet', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(loadedWallet.response.status, 200);
+    assert.deepEqual(loadedWallet.body, []);
+
+    const loadedEvents = await request(baseUrl, '/api/users/me/events', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(loadedEvents.response.status, 200);
+    assert.deepEqual(loadedEvents.body, []);
+  });
+
+  it('rejects account deletion without auth', async () => {
+    const removed = await request(baseUrl, '/api/users/me', {
+      method: 'DELETE',
+    });
+    assert.equal(removed.response.status, 401);
   });
 
   it('adds, lists, and removes wallet card refs only', async () => {

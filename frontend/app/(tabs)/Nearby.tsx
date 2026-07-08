@@ -2,6 +2,7 @@ import * as Location from "expo-location";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,6 +17,7 @@ import { getAllCards } from "../../src/services/data/cards";
 import { updateCompanionPassRecommendation } from "../../src/services/data/companionPass";
 import { trackUserEvent } from "../../src/services/data/events";
 import { getAllMccMappings } from "../../src/services/data/mccMap";
+import { getUserProfile } from "../../src/services/data/userProfile";
 import { getUserWallet } from "../../src/services/data/wallet";
 import {
   buildPaymentPromptHref,
@@ -55,8 +57,10 @@ export default function Nearby() {
   const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("Checking your current location...");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [match, setMatch] = useState<NearbyMatch | null>(null);
   const [isRecommendationOpen, setIsRecommendationOpen] = useState(false);
   const [dismissedRecommendationKey, setDismissedRecommendationKey] =
@@ -80,14 +84,17 @@ export default function Nearby() {
       setMatch(null);
       setStatus("Checking your current location...");
 
-      const [permission, brands, cards, mccMappings, wallet] =
+      const [permission, brands, cards, mccMappings, wallet, profile] =
         await Promise.all([
           Location.requestForegroundPermissionsAsync(),
           getAllBrands(),
           getAllCards(),
           getAllMccMappings(),
           getUserWallet(user.uid),
+          getUserProfile(user.uid).catch(() => null),
         ]);
+
+      setNotificationsEnabled(Boolean(profile?.notificationsEnabled));
 
       if (permission.status !== "granted") {
         setStatus("Location permission was not granted.");
@@ -196,6 +203,12 @@ export default function Nearby() {
     }, [loadNearbyRecommendation, user])
   );
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadNearbyRecommendation();
+    setRefreshing(false);
+  }, [loadNearbyRecommendation]);
+
   const recommendationKey = match
     ? [
         match.brand.id,
@@ -285,7 +298,9 @@ export default function Nearby() {
       console.error("Error updating nearby companion pass preview:", passError);
     });
 
-    if (lastScheduledPaymentPromptKey.current !== recommendationKey) {
+    // Automatic notifications are an opt-in: the user turns them on from
+    // Profile. Without that consent the nudge stays in-app only.
+    if (notificationsEnabled && lastScheduledPaymentPromptKey.current !== recommendationKey) {
       lastScheduledPaymentPromptKey.current = recommendationKey;
       if (paymentPromptInput) {
         schedulePaymentPromptNotification(paymentPromptInput).catch((notificationError) => {
@@ -293,7 +308,7 @@ export default function Nearby() {
         });
       }
     }
-  }, [match, paymentPromptInput, recommendationKey, user]);
+  }, [match, notificationsEnabled, paymentPromptInput, recommendationKey, user]);
 
   // Open is a meaningful interaction, it tells us the nudge was interesting
   // enough for the user to inspect further.
@@ -413,7 +428,17 @@ export default function Nearby() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#0af"
+          />
+        }
+      >
         <Text style={styles.title}>Nearby</Text>
         <Text style={styles.subtitle}>
           Foreground location checks using seeded merchant locations.

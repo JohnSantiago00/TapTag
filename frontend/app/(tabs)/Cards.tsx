@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import {
   FlatList,
   ActivityIndicator,
+  RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -45,41 +47,45 @@ export default function Cards() {
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [wallet, setWallet] = useState<WalletCardRef[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [walletDrafts, setWalletDrafts] = useState<Record<string, WalletDraft>>({});
   const [error, setError] = useState<string | null>(null);
 
   // This loader combines global knowledge cards with user-specific wallet refs
   // so the UI can show both the available catalog and the selected subset.
-  const loadWalletScreen = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const [availableCards, selectedWallet] = await Promise.all([
-        getAllCards(),
-        getUserWallet(user.uid),
-      ]);
-      setCards(availableCards);
-      setWallet(selectedWallet.filter((item) => item.enabled));
-      setWalletDrafts((current) => {
-        const next = { ...current };
-        selectedWallet.forEach((item) => {
-          next[item.id] = {
-            nickname: item.nickname ?? "",
-            last4: item.last4 ?? "",
-            color: item.color ?? "#00AAFF",
-          };
+  const loadWalletScreen = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!user) return;
+      if (!silent) setLoading(true);
+      setError(null);
+      try {
+        const [availableCards, selectedWallet] = await Promise.all([
+          getAllCards(),
+          getUserWallet(user.uid),
+        ]);
+        setCards(availableCards);
+        setWallet(selectedWallet.filter((item) => item.enabled));
+        setWalletDrafts((current) => {
+          const next = { ...current };
+          selectedWallet.forEach((item) => {
+            next[item.id] = {
+              nickname: item.nickname ?? "",
+              last4: item.last4 ?? "",
+              color: item.color ?? "#00AAFF",
+            };
+          });
+          return next;
         });
-        return next;
-      });
-    } catch (loadError) {
-      console.error("Error loading wallet screen:", loadError);
-      setError("Could not load wallet data from the TapTag API.");
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+      } catch (loadError) {
+        console.error("Error loading wallet screen:", loadError);
+        setError("Could not load wallet data from the TapTag API.");
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [user]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -90,6 +96,12 @@ export default function Cards() {
       loadWalletScreen();
     }, [loadWalletScreen, user])
   );
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadWalletScreen({ silent: true });
+    setRefreshing(false);
+  }, [loadWalletScreen]);
 
   // We derive a Set first because membership checks happen repeatedly while
   // rendering the list and summary.
@@ -202,18 +214,22 @@ export default function Cards() {
   if (!user) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <Text style={styles.title}>Wallet</Text>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoText}>
-            Sign in to choose the card products you already own.
-          </Text>
+        <View style={styles.headerPadding}>
+          <Text style={styles.title}>Wallet</Text>
+          <View style={styles.infoCard}>
+            <Text style={styles.infoText}>
+              Sign in to choose the card products you already own.
+            </Text>
+          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+  // Everything above the catalog rows lives in the list header so the whole
+  // screen scrolls as one surface and pull-to-refresh works from the top.
+  const listHeader = (
+    <View>
       <Text style={styles.title}>Wallet</Text>
 
       <View style={styles.infoCard}>
@@ -224,37 +240,52 @@ export default function Cards() {
         </Text>
       </View>
 
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>This phase</Text>
-        <Text style={styles.infoText}>
-          Choose from seeded card products only. TapTag stores lightweight card
-          product references in your wallet, not sensitive payment details.
-        </Text>
-      </View>
-
-      <Text style={styles.sectionTitle}>Selected Wallet Cards ({wallet.length})</Text>
+      <Text style={styles.sectionTitle}>Your Cards ({selectedCards.length})</Text>
       <Text style={styles.helperText}>
-        Your Lab and Nearby recommendations will use these selected card
-        products.
+        Lab and Nearby recommendations use these selected card products.
       </Text>
 
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>Current wallet</Text>
-        <Text style={styles.summaryText}>
-          {selectedCards.length
-            ? selectedCards
-                .map((card) => walletById.get(card.id)?.nickname || card.name)
-                .join(", ")
-            : "No wallet cards selected yet."}
-        </Text>
-      </View>
+      {selectedCards.length ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.walletTilesRow}
+        >
+          {selectedCards.map((card) => {
+            const walletRef = walletById.get(card.id);
+            const tileColor = walletRef?.color || "#00AAFF";
+            return (
+              <View key={card.id} style={[styles.walletTile, { backgroundColor: tileColor }]}>
+                <Text style={styles.walletTileIssuer}>{card.issuer}</Text>
+                <Text style={styles.walletTileName} numberOfLines={2}>
+                  {walletRef?.nickname || card.name}
+                </Text>
+                <View style={styles.walletTileFooter}>
+                  <Text style={styles.walletTileNetwork}>{card.network}</Text>
+                  <Text style={styles.walletTileLast4}>
+                    {walletRef?.last4 ? `•••• ${walletRef.last4}` : ""}
+                  </Text>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : (
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryText}>
+            No cards selected yet. Add the cards you own from the catalog below.
+          </Text>
+        </View>
+      )}
+
+      <Text style={styles.sectionTitle}>Card Catalog</Text>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}
 
       {!loading && error ? (
         <View style={styles.errorCard}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadWalletScreen}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadWalletScreen()}>
             <Text style={styles.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -263,116 +294,125 @@ export default function Cards() {
       {!loading && !error && !cards.length ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyText}>
-            No seeded card products are available yet.
+            No card products are available yet.
           </Text>
         </View>
       ) : null}
+    </View>
+  );
 
-      {!loading && !error && cards.length ? (
-        <FlatList
-          data={cards}
-          keyExtractor={(item) => item.id}
-          // FlatList is used because this screen is conceptually a catalog of
-          // card products, and it scales better than mapping a raw array.
-          renderItem={({ item }) => {
-            const isSelected = selectedIds.has(item.id);
-            const walletRef = walletById.get(item.id);
-            const draft = walletDrafts[item.id] ?? {
-              nickname: walletRef?.nickname ?? "",
-              last4: walletRef?.last4 ?? "",
-              color: walletRef?.color ?? "#00AAFF",
-            };
+  return (
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <FlatList
+        data={loading || error ? [] : cards}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.listContent}
+        ListHeaderComponent={listHeader}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#0af"
+          />
+        }
+        renderItem={({ item }) => {
+          const isSelected = selectedIds.has(item.id);
+          const walletRef = walletById.get(item.id);
+          const draft = walletDrafts[item.id] ?? {
+            nickname: walletRef?.nickname ?? "",
+            last4: walletRef?.last4 ?? "",
+            color: walletRef?.color ?? "#00AAFF",
+          };
 
-            return (
-              <View style={styles.cardRow}>
-                <View style={styles.cardHeaderRow}>
-                  <View style={styles.cardCopy}>
-                    <View style={styles.cardTitleRow}>
-                      {isSelected ? (
-                        <View
-                          style={[
-                            styles.cardColorDot,
-                            { backgroundColor: draft.color || "#00AAFF" },
-                          ]}
-                        />
-                      ) : null}
-                      <Text style={styles.cardText}>{item.name}</Text>
-                    </View>
-                    <Text style={styles.cardMeta}>
-                      {item.issuer} • {item.network}
-                      {walletRef?.last4 ? ` • **** ${walletRef.last4}` : ""}
-                    </Text>
+          return (
+            <View style={styles.cardRow}>
+              <View style={styles.cardHeaderRow}>
+                <View style={styles.cardCopy}>
+                  <View style={styles.cardTitleRow}>
+                    {isSelected ? (
+                      <View
+                        style={[
+                          styles.cardColorDot,
+                          { backgroundColor: draft.color || "#00AAFF" },
+                        ]}
+                      />
+                    ) : null}
+                    <Text style={styles.cardText}>{item.name}</Text>
+                  </View>
+                  <Text style={styles.cardMeta}>
+                    {item.issuer} • {item.network}
+                    {walletRef?.last4 ? ` • **** ${walletRef.last4}` : ""}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() =>
+                    handleToggleWalletCard(item.id, selectedIds.has(item.id))
+                  }
+                  disabled={savingCardId === item.id}
+                >
+                  <Text style={isSelected ? styles.removeText : styles.addText}>
+                    {savingCardId === item.id
+                      ? "Saving..."
+                      : isSelected
+                        ? "Remove"
+                        : "Add"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {isSelected ? (
+                <View style={styles.detailsPanel}>
+                  <Text style={styles.detailsLabel}>Card Nickname</Text>
+                  <TextInput
+                    style={styles.detailsInput}
+                    placeholder={item.name}
+                    placeholderTextColor="#666"
+                    value={draft.nickname}
+                    onChangeText={(value) =>
+                      updateWalletDraft(item.id, { nickname: value })
+                    }
+                  />
+                  <Text style={styles.detailsLabel}>Last 4</Text>
+                  <TextInput
+                    style={styles.detailsInput}
+                    placeholder="Optional"
+                    placeholderTextColor="#666"
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={draft.last4}
+                    onChangeText={(value) =>
+                      updateWalletDraft(item.id, {
+                        last4: value.replace(/\D/g, "").slice(0, 4),
+                      })
+                    }
+                  />
+                  <Text style={styles.detailsLabel}>Color</Text>
+                  <View style={styles.swatchRow}>
+                    {CARD_COLORS.map((color) => (
+                      <TouchableOpacity
+                        key={color}
+                        style={[
+                          styles.swatch,
+                          { backgroundColor: color },
+                          draft.color === color && styles.swatchActive,
+                        ]}
+                        onPress={() => updateWalletDraft(item.id, { color })}
+                      />
+                    ))}
                   </View>
                   <TouchableOpacity
-                    onPress={() =>
-                      handleToggleWalletCard(item.id, selectedIds.has(item.id))
-                    }
+                    style={styles.saveDetailsButton}
+                    onPress={() => handleSaveWalletDetails(item.id)}
                     disabled={savingCardId === item.id}
                   >
-                    <Text style={isSelected ? styles.removeText : styles.addText}>
-                      {savingCardId === item.id
-                        ? "Saving..."
-                        : isSelected
-                          ? "Remove"
-                          : "Add"}
-                    </Text>
+                    <Text style={styles.saveDetailsText}>Save Details</Text>
                   </TouchableOpacity>
                 </View>
-
-                {isSelected ? (
-                  <View style={styles.detailsPanel}>
-                    <Text style={styles.detailsLabel}>Card Nickname</Text>
-                    <TextInput
-                      style={styles.detailsInput}
-                      placeholder={item.name}
-                      placeholderTextColor="#666"
-                      value={draft.nickname}
-                      onChangeText={(value) =>
-                        updateWalletDraft(item.id, { nickname: value })
-                      }
-                    />
-                    <Text style={styles.detailsLabel}>Last 4</Text>
-                    <TextInput
-                      style={styles.detailsInput}
-                      placeholder="Optional"
-                      placeholderTextColor="#666"
-                      keyboardType="number-pad"
-                      maxLength={4}
-                      value={draft.last4}
-                      onChangeText={(value) =>
-                        updateWalletDraft(item.id, {
-                          last4: value.replace(/\D/g, "").slice(0, 4),
-                        })
-                      }
-                    />
-                    <Text style={styles.detailsLabel}>Color</Text>
-                    <View style={styles.swatchRow}>
-                      {CARD_COLORS.map((color) => (
-                        <TouchableOpacity
-                          key={color}
-                          style={[
-                            styles.swatch,
-                            { backgroundColor: color },
-                            draft.color === color && styles.swatchActive,
-                          ]}
-                          onPress={() => updateWalletDraft(item.id, { color })}
-                        />
-                      ))}
-                    </View>
-                    <TouchableOpacity
-                      style={styles.saveDetailsButton}
-                      onPress={() => handleSaveWalletDetails(item.id)}
-                      disabled={savingCardId === item.id}
-                    >
-                      <Text style={styles.saveDetailsText}>Save Details</Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : null}
-              </View>
-            );
-          }}
-        />
-      ) : null}
+              ) : null}
+            </View>
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -381,7 +421,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
+  },
+  headerPadding: {
     padding: 24,
+  },
+  listContent: {
+    padding: 24,
+    paddingBottom: 40,
   },
   title: {
     color: "#0af",
@@ -421,6 +467,45 @@ const styles = StyleSheet.create({
   },
   loader: {
     marginTop: 16,
+  },
+  walletTilesRow: {
+    gap: 12,
+    paddingBottom: 6,
+    marginBottom: 14,
+  },
+  walletTile: {
+    width: 220,
+    height: 130,
+    borderRadius: 14,
+    padding: 14,
+    justifyContent: "space-between",
+  },
+  walletTileIssuer: {
+    color: "rgba(0, 19, 31, 0.75)",
+    fontSize: 12,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  walletTileName: {
+    color: "#00131f",
+    fontSize: 17,
+    fontWeight: "800",
+    lineHeight: 22,
+  },
+  walletTileFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  walletTileNetwork: {
+    color: "rgba(0, 19, 31, 0.75)",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  walletTileLast4: {
+    color: "#00131f",
+    fontSize: 14,
+    fontWeight: "700",
   },
   cardRow: {
     backgroundColor: "#111",
@@ -468,12 +553,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 14,
     marginBottom: 14,
-  },
-  summaryTitle: {
-    color: "#8ecfff",
-    fontSize: 14,
-    fontWeight: "600",
-    marginBottom: 6,
   },
   summaryText: {
     color: "#cfe9ff",

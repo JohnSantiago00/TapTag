@@ -1,8 +1,12 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import { sendPasswordResetEmail, signInWithEmailAndPassword } from "firebase/auth";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -27,6 +31,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // This handler keeps login logic in the screen because the behavior is small,
   // local, and tightly coupled to screen status copy.
@@ -49,6 +54,29 @@ export default function Login() {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (!validateEmail(email)) {
+      return setStatus("Enter your email above first, then tap Forgot Password.");
+    }
+
+    try {
+      setLoading(true);
+      await sendPasswordResetEmail(auth, email.trim());
+      // Same copy for existing and unknown emails so this screen cannot be
+      // used to probe which addresses have accounts.
+      setStatus("If an account exists for that email, a reset link is on its way.");
+    } catch (error: any) {
+      console.error(error);
+      setStatus(
+        error.code === "auth/too-many-requests"
+          ? "Too many attempts. Try again later."
+          : "Could not send the reset email. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Firebase error codes are mapped to calmer user-facing messages so the UI
   // stays understandable without exposing raw SDK wording.
   const getFirebaseErrorMessage = (code: string): string => {
@@ -60,65 +88,101 @@ export default function Login() {
         return "No account found with that email.";
       case "auth/too-many-requests":
         return "Too many attempts. Try again later.";
+      case "auth/network-request-failed":
+        return "Network error. Check your connection and try again.";
       default:
         return "Something went wrong. Please try again.";
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back</Text>
-      <Text style={styles.subtitle}>
-        Sign in to your privacy-first wallet intelligence workspace.
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#aaa"
-        value={email}
-        // Keeping the inputs controlled makes validation/status behavior easy
-        // to reason about.
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#aaa"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-      />
-
-      <TouchableOpacity
-        style={[styles.button, loading && { opacity: 0.6 }]}
-        onPress={handleLogin}
-        disabled={loading}
+    <KeyboardAvoidingView
+      style={styles.flex}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Login</Text>
-        )}
-      </TouchableOpacity>
-
-      {status ? <Text style={styles.status}>{status}</Text> : null}
-
-      <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
-        <Text style={styles.switchText}>
-          Don&apos;t have an account? Sign Up
+        <Text style={styles.title}>Welcome Back</Text>
+        <Text style={styles.subtitle}>
+          Sign in to your privacy-first wallet intelligence workspace.
         </Text>
-      </TouchableOpacity>
-    </View>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#aaa"
+          value={email}
+          // Keeping the inputs controlled makes validation/status behavior easy
+          // to reason about.
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          autoComplete="email"
+          keyboardType="email-address"
+          returnKeyType="next"
+        />
+
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Password"
+            placeholderTextColor="#aaa"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoComplete="password"
+            returnKeyType="done"
+            onSubmitEditing={handleLogin}
+          />
+          <TouchableOpacity
+            style={styles.eyeButton}
+            onPress={() => setShowPassword((current) => !current)}
+            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+          >
+            <Ionicons
+              name={showPassword ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color="#aaa"
+            />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, loading && { opacity: 0.6 }]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Login</Text>
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={handleForgotPassword} disabled={loading}>
+          <Text style={styles.switchText}>Forgot password?</Text>
+        </TouchableOpacity>
+
+        {status ? <Text style={styles.status}>{status}</Text> : null}
+
+        <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
+          <Text style={styles.switchText}>
+            Don&apos;t have an account? Sign Up
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
+    backgroundColor: "#000",
+  },
+  container: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#000",
@@ -145,6 +209,23 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 8,
   },
+  passwordRow: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#1a1a1a",
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  passwordInput: {
+    flex: 1,
+    color: "#fff",
+    padding: 12,
+  },
+  eyeButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
   button: {
     backgroundColor: "#0af",
     paddingVertical: 12,
@@ -154,5 +235,5 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
   switchText: { color: "#0af", marginTop: 15 },
-  status: { color: "#fff", marginTop: 15 },
+  status: { color: "#fff", marginTop: 15, textAlign: "center" },
 });
