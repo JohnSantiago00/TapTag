@@ -1,5 +1,5 @@
 import * as Location from "expo-location";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -9,13 +9,18 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
 import { getAllCards } from "../../src/services/data/cards";
 import { trackUserEvent } from "../../src/services/data/events";
 import { getAllMccMappings } from "../../src/services/data/mccMap";
 import { getUserWallet } from "../../src/services/data/wallet";
+import {
+  buildPaymentPromptHref,
+  PaymentPromptInput,
+  schedulePaymentPromptNotification,
+} from "../../src/services/paymentPrompt";
 import { getDistance } from "../../src/utils/distance";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
@@ -46,6 +51,7 @@ type NearbyMatch = {
 // brand, it picks the nearest seeded merchant based on current foreground
 // location and then runs the same recommendation engine.
 export default function Nearby() {
+  const router = useRouter();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +61,7 @@ export default function Nearby() {
   const [dismissedRecommendationKey, setDismissedRecommendationKey] =
     useState<string | null>(null);
   const lastTrackedRecommendationKey = useRef<string | null>(null);
+  const lastScheduledPaymentPromptKey = useRef<string | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
   );
@@ -206,6 +213,23 @@ export default function Nearby() {
     recommendationKey !== null && dismissedRecommendationKey === recommendationKey;
   const showGuidanceCard = !match || isDismissed;
 
+  const paymentPromptInput = useMemo<PaymentPromptInput | null>(() => {
+    if (!match?.recommendation.bestCard) {
+      return null;
+    }
+
+    return {
+      source: "nearby",
+      merchantName: match.brand.name,
+      merchantMcc: match.brand.mcc,
+      normalizedCategory: match.normalizedCategory,
+      recommendedCardProductId: match.recommendation.bestCard.id,
+      recommendedCardName: match.recommendation.bestCard.name,
+      rewardRate: match.recommendation.bestRate,
+      reason: match.recommendation.reason,
+    };
+  }, [match]);
+
   // A new recommendation closes the expanded details view so the screen does not
   // show stale detail content for a prior merchant.
   useEffect(() => {
@@ -246,11 +270,51 @@ export default function Nearby() {
     }).catch((trackingError) => {
       console.error("Error tracking nearby recommendation event:", trackingError);
     });
-  }, [match, recommendationKey, user]);
+
+    if (lastScheduledPaymentPromptKey.current !== recommendationKey) {
+      lastScheduledPaymentPromptKey.current = recommendationKey;
+      if (paymentPromptInput) {
+        schedulePaymentPromptNotification(paymentPromptInput).catch((notificationError) => {
+          console.error("Error scheduling nearby payment prompt notification:", notificationError);
+        });
+      }
+    }
+  }, [match, paymentPromptInput, recommendationKey, user]);
 
   // Open is a meaningful interaction, it tells us the nudge was interesting
   // enough for the user to inspect further.
-  async function handleOpenRecommendation() {
+  async function handleOpenPaymentPrompt() {
+    if (!user || !match?.recommendation.bestCard) {
+      return;
+    }
+
+    const input = paymentPromptInput;
+    if (!input) return;
+
+    try {
+      await trackUserEvent(user.uid, {
+        eventType: "payment_prompt_opened",
+        source: "nearby",
+        brandId: match.brand.id,
+        brandName: match.brand.name,
+        recommendedCardProductId: match.recommendation.bestCard.id,
+        recommendedCardName: match.recommendation.bestCard.name,
+        normalizedCategory: match.normalizedCategory,
+        merchantMcc: match.brand.mcc,
+        distanceMeters: Math.round(match.distanceMeters),
+        metadata: {
+          rewardRate: match.recommendation.bestRate,
+          openMethod: "nearby_nudge",
+        },
+      });
+    } catch (trackingError) {
+      console.error("Error tracking nearby payment prompt open:", trackingError);
+    }
+
+    router.push(buildPaymentPromptHref(input));
+  }
+
+  async function handleOpenRecommendationDetails() {
     if (!user || !match?.recommendation.bestCard) {
       return;
     }
@@ -270,7 +334,7 @@ export default function Nearby() {
         distanceMeters: Math.round(match.distanceMeters),
       });
     } catch (trackingError) {
-      console.error("Error tracking nearby recommendation open:", trackingError);
+      console.error("Error tracking nearby recommendation details open:", trackingError);
     }
   }
 
@@ -357,9 +421,15 @@ export default function Nearby() {
                   engagement instead of assuming the shown state was enough. */}
               <TouchableOpacity
                 style={styles.nudgeButtonPrimary}
-                onPress={handleOpenRecommendation}
+                onPress={handleOpenPaymentPrompt}
               >
-                <Text style={styles.nudgeButtonPrimaryText}>Open</Text>
+                <Text style={styles.nudgeButtonPrimaryText}>Show Card</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.nudgeButtonSecondary}
+                onPress={handleOpenRecommendationDetails}
+              >
+                <Text style={styles.nudgeButtonSecondaryText}>Details</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.nudgeButtonSecondary}
@@ -410,6 +480,14 @@ export default function Nearby() {
             <Text style={styles.status}>
               Reason: {match.recommendation.reason}
             </Text>
+            {match.recommendation.bestCard ? (
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={handleOpenPaymentPrompt}
+              >
+                <Text style={styles.refreshButtonText}>Show Pay Prompt</Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>

@@ -28,6 +28,9 @@
 - Open Lab with no wallet cards and confirm the empty-wallet guidance.
 - Select several merchants across Dining, Groceries, Gas, Travel, Transportation, Entertainment, and Online Shopping.
 - Confirm the recommended card and explanation match the reward rules.
+- Tap Show Pay Prompt and confirm the prompt shows the card, merchant, reward reason, and wallet instruction.
+- Tap I Used This Card and confirm the confirmation message appears.
+- Tap Send Test Notification, then tap the notification and confirm it opens the same pay prompt.
 - Return to Wallet, change selected cards, then return to Lab and confirm the recommendation refreshes.
 
 ## Nearby
@@ -37,12 +40,14 @@
 - Test Refresh Nearby Check after changing wallet state.
 - Deny location permission on a fresh install or OS settings reset and confirm the screen explains the blocked state.
 - Confirm Open and Dismiss both work when a nudge appears.
+- When a nudge appears, tap Show Card and confirm it opens the pay prompt.
+- Confirm the automatic nearby notification opens the pay prompt when tapped.
 
 ## Profile
 
 - Save a display name.
 - Confirm selected wallet count is accurate.
-- Confirm recent events appear after Wallet, Lab, and Nearby actions.
+- Confirm recent events appear after Wallet, Lab, Nearby, payment prompt open, and I Used This Card actions.
 - Temporarily stop the API and confirm Profile shows a retryable load error.
 
 ## Privacy Boundary

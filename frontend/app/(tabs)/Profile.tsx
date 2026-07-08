@@ -118,6 +118,8 @@ export default function Profile() {
       recommendation_shown: 0,
       recommendation_opened: 0,
       recommendation_dismissed: 0,
+      payment_prompt_opened: 0,
+      payment_prompt_confirmed: 0,
       wallet_updated: 0,
       brand_muted: 0,
     } as Record<string, number>
@@ -138,6 +140,10 @@ export default function Profile() {
         return `Opened${event.brandName ? `, ${event.brandName}` : ""}`;
       case "recommendation_dismissed":
         return `Dismissed${event.brandName ? `, ${event.brandName}` : ""}`;
+      case "payment_prompt_opened":
+        return `Pay prompt opened${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+      case "payment_prompt_confirmed":
+        return `Used card${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
       case "brand_muted":
         return `Muted${event.brandName ? `, ${event.brandName}` : ""}`;
       default:
@@ -234,6 +240,12 @@ export default function Profile() {
             <View style={styles.metricCard}>
               <Text style={styles.metricLabel}>Wallet</Text>
               <Text style={styles.metricValue}>{eventCounts.wallet_updated}</Text>
+            </View>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricLabel}>Prompt</Text>
+              <Text style={styles.metricValue}>
+                {eventCounts.payment_prompt_opened + eventCounts.payment_prompt_confirmed}
+              </Text>
             </View>
           </View>
         </View>

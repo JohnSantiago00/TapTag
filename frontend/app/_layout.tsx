@@ -1,10 +1,17 @@
-import { Stack } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import "react-native-reanimated";
 import "../src/config/firebase";
 import { useAuthRedirect } from "../hooks/useAuthRedirect";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
+import {
+  buildPaymentPromptHref,
+  configurePaymentPromptNotifications,
+  isPaymentPromptNotificationData,
+} from "../src/services/paymentPrompt";
 
 /*
   File role:
@@ -21,7 +28,39 @@ import { AuthProvider, useAuth } from "../src/context/AuthContext";
 // the auth stack, or a logged-out user briefly sees the app tabs.
 function RootNavigator() {
   const { loading } = useAuth();
+  const router = useRouter();
   useAuthRedirect();
+
+  useEffect(() => {
+    configurePaymentPromptNotifications().catch((error) => {
+      console.error("Error configuring payment prompt notifications:", error);
+    });
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const data = response.notification.request.content.data;
+
+        if (!isPaymentPromptNotificationData(data)) {
+          return;
+        }
+
+        router.push(
+          buildPaymentPromptHref({
+            source: "notification",
+            merchantName: data.merchantName,
+            merchantMcc: Number(data.merchantMcc) || undefined,
+            normalizedCategory: data.normalizedCategory,
+            recommendedCardProductId: data.recommendedCardProductId,
+            recommendedCardName: data.recommendedCardName,
+            rewardRate: Number(data.rewardRate) || undefined,
+            reason: data.reason,
+          })
+        );
+      }
+    );
+
+    return () => subscription.remove();
+  }, [router]);
 
   if (loading) {
     return (

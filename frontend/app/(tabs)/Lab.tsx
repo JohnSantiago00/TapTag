@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
 import { getAllCards, KnowledgeCard } from "../../src/services/data/cards";
@@ -18,6 +18,11 @@ import {
 } from "../../src/services/data/mccMap";
 import { trackUserEvent } from "../../src/services/data/events";
 import { getUserWallet, WalletCardRef } from "../../src/services/data/wallet";
+import {
+  buildPaymentPromptHref,
+  PaymentPromptInput,
+  schedulePaymentPromptNotification,
+} from "../../src/services/paymentPrompt";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 
 /*
@@ -35,6 +40,7 @@ import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 // seeded merchant and inspect the recommendation logic without needing real
 // location context.
 export default function Lab() {
+  const router = useRouter();
   const { user } = useAuth();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -109,6 +115,23 @@ export default function Lab() {
     : "No cards selected yet";
   const hasWalletCards = walletCards.length > 0;
 
+  function getPaymentPromptInput(source: "lab"): PaymentPromptInput | null {
+    if (!selectedBrand || !recommendation?.bestCard) {
+      return null;
+    }
+
+    return {
+      source,
+      merchantName: selectedBrand.name,
+      merchantMcc: selectedBrand.mcc,
+      normalizedCategory,
+      recommendedCardProductId: recommendation.bestCard.id,
+      recommendedCardName: recommendation.bestCard.name,
+      rewardRate: recommendation.bestRate,
+      reason: recommendation.reason,
+    };
+  }
+
   // The tracking key includes brand, category, chosen card, and wallet shape so
   // analytics fire only when the effective recommendation truly changes.
   const recommendationKey = [
@@ -157,6 +180,40 @@ export default function Lab() {
     user,
     walletCards,
   ]);
+
+  async function handleOpenPaymentPrompt() {
+    if (!user) return;
+    const input = getPaymentPromptInput("lab");
+    if (!input) return;
+
+    await trackUserEvent(user.uid, {
+      eventType: "payment_prompt_opened",
+      source: "lab",
+      brandId: selectedBrand?.id,
+      brandName: input.merchantName,
+      recommendedCardProductId: input.recommendedCardProductId,
+      recommendedCardName: input.recommendedCardName,
+      normalizedCategory: input.normalizedCategory,
+      merchantMcc: input.merchantMcc,
+      metadata: {
+        rewardRate: input.rewardRate ?? null,
+        openMethod: "lab_button",
+      },
+    }).catch((trackingError) => {
+      console.error("Error tracking lab payment prompt open:", trackingError);
+    });
+
+    router.push(buildPaymentPromptHref(input));
+  }
+
+  async function handleSendTestNotification() {
+    const input = getPaymentPromptInput("lab");
+    if (!input) return;
+
+    await schedulePaymentPromptNotification(input).catch((notificationError) => {
+      console.error("Error scheduling payment prompt notification:", notificationError);
+    });
+  }
 
   if (!user) {
     return (
@@ -243,6 +300,22 @@ export default function Lab() {
             <Text style={styles.resultMeta}>
               MCC {selectedBrand?.mcc ?? "None"} • Category {selectedMccMapping?.normalizedCategory ?? "None"}
             </Text>
+            {recommendation?.bestCard && hasWalletCards ? (
+              <View style={styles.promptActions}>
+                <TouchableOpacity
+                  style={styles.promptButtonPrimary}
+                  onPress={handleOpenPaymentPrompt}
+                >
+                  <Text style={styles.promptButtonPrimaryText}>Show Pay Prompt</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.promptButtonSecondary}
+                  onPress={handleSendTestNotification}
+                >
+                  <Text style={styles.promptButtonSecondaryText}>Send Test Notification</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
           </View>
 
           {!hasWalletCards ? (
@@ -476,6 +549,34 @@ const styles = StyleSheet.create({
     color: "#888",
     fontSize: 13,
     lineHeight: 18,
+  },
+  promptActions: {
+    gap: 10,
+    marginTop: 6,
+  },
+  promptButtonPrimary: {
+    backgroundColor: "#0af",
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  promptButtonPrimaryText: {
+    color: "#00131f",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  promptButtonSecondary: {
+    backgroundColor: "#1a1a1a",
+    borderColor: "#2f4b5f",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  promptButtonSecondaryText: {
+    color: "#8ecfff",
+    fontSize: 14,
+    fontWeight: "700",
   },
   itemCard: {
     backgroundColor: "#111",
