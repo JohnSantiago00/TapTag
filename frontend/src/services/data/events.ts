@@ -17,6 +17,8 @@ export type TapTagEventType =
   | "payment_prompt_opened"
   | "payment_wallet_opened"
   | "payment_prompt_confirmed"
+  | "payment_prompt_feedback"
+  | "companion_pass_updated"
   | "brand_muted"
   | "wallet_updated";
 

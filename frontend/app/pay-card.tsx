@@ -1,4 +1,8 @@
 import { useAuth } from "@/src/context/AuthContext";
+import {
+  getCompanionPassInstallLink,
+  updateCompanionPassRecommendation,
+} from "@/src/services/data/companionPass";
 import { trackUserEvent } from "@/src/services/data/events";
 import {
   getWalletInstruction,
@@ -7,7 +11,7 @@ import {
 } from "@/src/services/paymentPrompt";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -26,6 +30,7 @@ export default function PayCardPrompt() {
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const [status, setStatus] = useState<string | null>(null);
+  const handledRouteIntent = useRef(false);
 
   const recommendedCardName =
     paramValue(params.recommendedCardName) ?? "recommended card";
@@ -36,12 +41,14 @@ export default function PayCardPrompt() {
   const rewardRate = Number(paramValue(params.rewardRate));
   const merchantMcc = Number(paramValue(params.merchantMcc));
   const source = paramValue(params.source) ?? "payment_prompt";
+  const autoOpenWallet = paramValue(params.autoOpenWallet) === "1";
+  const confirmUsed = paramValue(params.confirmUsed) === "1";
   const rewardSummary =
     Number.isFinite(rewardRate) && normalizedCategory
       ? `${rewardRate}x ${normalizedCategory}`
       : normalizedCategory ?? "best available rewards";
 
-  async function handleUsedCard() {
+  async function handlePaymentFeedback(outcome: "used" | "not_used" | "wrong_card") {
     if (!user) {
       setStatus("Sign in is required before TapTag can save this event.");
       return;
@@ -49,7 +56,55 @@ export default function PayCardPrompt() {
 
     try {
       await trackUserEvent(user.uid, {
-        eventType: "payment_prompt_confirmed",
+        eventType:
+          outcome === "used"
+            ? "payment_prompt_confirmed"
+            : "payment_prompt_feedback",
+        source: source === "nearby" ? "nearby" : "lab",
+        brandName: merchantName,
+        recommendedCardProductId,
+        recommendedCardName,
+        normalizedCategory,
+        merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : undefined,
+        metadata: {
+          rewardRate: Number.isFinite(rewardRate) ? rewardRate : null,
+          promptSource: source,
+          outcome,
+        },
+      });
+      if (outcome === "used") {
+        setStatus("Saved. TapTag recorded that you used this recommendation.");
+      } else if (outcome === "wrong_card") {
+        setStatus("Saved. TapTag recorded that a different card was used.");
+      } else {
+        setStatus("Saved. TapTag recorded that this recommendation was not used.");
+      }
+    } catch (error) {
+      console.error("Error tracking payment prompt feedback:", error);
+      setStatus("Could not save the event, but the recommendation is still valid.");
+    }
+  }
+
+  async function handleUpdateCompanionPass() {
+    if (!user) {
+      setStatus("Sign in is required before TapTag can update your companion pass.");
+      return;
+    }
+
+    try {
+      await updateCompanionPassRecommendation(user.uid, {
+        source,
+        merchantName,
+        merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : null,
+        normalizedCategory: normalizedCategory ?? "Other",
+        recommendedCardProductId: recommendedCardProductId ?? null,
+        recommendedCardName,
+        rewardRate: Number.isFinite(rewardRate) ? rewardRate : null,
+        reason: reason ?? null,
+      });
+
+      await trackUserEvent(user.uid, {
+        eventType: "companion_pass_updated",
         source: source === "nearby" ? "nearby" : "lab",
         brandName: merchantName,
         recommendedCardProductId,
@@ -61,10 +116,18 @@ export default function PayCardPrompt() {
           promptSource: source,
         },
       });
-      setStatus("Saved. TapTag recorded that you used this recommendation.");
+
+      const installLink = await getCompanionPassInstallLink(user.uid).catch(
+        () => null
+      );
+      setStatus(
+        installLink?.configured
+          ? "Companion pass updated. Open Wallet to view the latest recommendation."
+          : "Companion pass preview updated. Apple/Google pass issuer credentials are still needed before TapTag can install a real Wallet pass."
+      );
     } catch (error) {
-      console.error("Error tracking payment prompt confirmation:", error);
-      setStatus("Could not save the event, but the recommendation is still valid.");
+      console.error("Error updating companion pass:", error);
+      setStatus("Could not update the companion pass preview right now.");
     }
   }
 
@@ -115,6 +178,23 @@ export default function PayCardPrompt() {
     );
   }
 
+  useEffect(() => {
+    if (handledRouteIntent.current) return;
+    handledRouteIntent.current = true;
+
+    if (autoOpenWallet) {
+      handleOpenWallet();
+      return;
+    }
+
+    if (confirmUsed) {
+      handlePaymentFeedback("used");
+    }
+    // Route intent params should fire once for the opened notification, not
+    // re-fire as local callback identities change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoOpenWallet, confirmUsed]);
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
@@ -140,6 +220,15 @@ export default function PayCardPrompt() {
         </View>
 
         <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Companion Wallet Pass</Text>
+          <Text style={styles.bodyText}>
+            Update the TapTag pass preview with this merchant and card. Real
+            Wallet installation turns on after Apple/Google issuer credentials
+            are configured.
+          </Text>
+        </View>
+
+        <View style={styles.card}>
           <Text style={styles.sectionTitle}>Why this screen exists</Text>
           <Text style={styles.bodyText}>
             Apple and Google do not let TapTag preselect a payment card for
@@ -159,9 +248,32 @@ export default function PayCardPrompt() {
           <Text style={styles.walletButtonText}>{getWalletOpenButtonLabel()}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.primaryButton} onPress={handleUsedCard}>
+        <TouchableOpacity style={styles.passButton} onPress={handleUpdateCompanionPass}>
+          <Ionicons name="ticket-outline" size={18} color="#8ecfff" />
+          <Text style={styles.passButtonText}>Update Companion Pass</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => handlePaymentFeedback("used")}
+        >
           <Text style={styles.primaryButtonText}>I Used This Card</Text>
         </TouchableOpacity>
+
+        <View style={styles.feedbackRow}>
+          <TouchableOpacity
+            style={styles.feedbackButton}
+            onPress={() => handlePaymentFeedback("not_used")}
+          >
+            <Text style={styles.feedbackButtonText}>No</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.feedbackButton}
+            onPress={() => handlePaymentFeedback("wrong_card")}
+          >
+            <Text style={styles.feedbackButtonText}>Wrong Card</Text>
+          </TouchableOpacity>
+        </View>
 
         <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
           <Text style={styles.secondaryButtonText}>Back to TapTag</Text>
@@ -275,6 +387,23 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "800",
   },
+  passButton: {
+    backgroundColor: "#151515",
+    borderColor: "#2f4b5f",
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  passButtonText: {
+    color: "#8ecfff",
+    fontSize: 15,
+    fontWeight: "800",
+  },
   primaryButtonText: {
     color: "#00131f",
     fontSize: 15,
@@ -287,6 +416,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingVertical: 14,
     alignItems: "center",
+  },
+  feedbackRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  feedbackButton: {
+    flex: 1,
+    backgroundColor: "#151515",
+    borderColor: "#333",
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  feedbackButtonText: {
+    color: "#ddd",
+    fontSize: 14,
+    fontWeight: "700",
   },
   secondaryButtonText: {
     color: "#ddd",

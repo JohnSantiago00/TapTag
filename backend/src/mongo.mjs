@@ -48,6 +48,7 @@ export async function ensureIndexes(database = db) {
     database.collection('mcc_map').createIndex({ mcc: 1 }, { unique: true }),
     database.collection('users').createIndex({ uid: 1 }, { unique: true }),
     database.collection('wallet').createIndex({ uid: 1, cardProductId: 1 }, { unique: true }),
+    database.collection('companion_passes').createIndex({ uid: 1 }, { unique: true }),
     database.collection('events').createIndex({ uid: 1, occurredAt: -1 }),
   ]);
 }

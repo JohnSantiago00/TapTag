@@ -22,6 +22,26 @@ Production notes:
 - Replace `CORS_ORIGIN=*` with the deployed app/dev origins once the frontend target is known.
 - Keep MongoDB credentials in backend/server env only. Never put them in `frontend/.env`.
 
+## Wallet Companion Passes
+
+The app can store and dynamically update each user's latest TapTag companion-pass recommendation today. Real Apple Wallet or Google Wallet pass installation requires issuer credentials that should only live on the backend.
+
+Apple Wallet production setup needs:
+
+- Apple Developer account
+- Pass Type ID
+- Team ID
+- Pass signing certificate/private key
+- Pass web service URL/auth token
+
+Google Wallet production setup needs:
+
+- Google Wallet issuer account
+- Generic Pass class/object setup
+- Service account credentials for JWT signing
+
+Until those are configured, `/api/users/me/companion-pass/install-link` intentionally returns `501` with a setup message instead of pretending a real pass can be installed.
+
 ## Health And Smoke Checks
 
 Health:

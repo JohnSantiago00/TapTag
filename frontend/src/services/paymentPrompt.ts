@@ -3,12 +3,17 @@ import { Href } from "expo-router";
 import { Linking, Platform } from "react-native";
 
 export const PAYMENT_PROMPT_NOTIFICATION_CATEGORY = "payment-recommendation";
+export const PAYMENT_PROMPT_ACTION_OPEN_WALLET = "open-wallet";
+export const PAYMENT_PROMPT_ACTION_SHOW_CARD = "show-card";
+export const PAYMENT_PROMPT_ACTION_USED_CARD = "used-card";
 const PAYMENT_PROMPT_NOTIFICATION_TYPE = "payment_prompt";
 
 export type PaymentPromptSource = "lab" | "nearby" | "notification";
 
 export type PaymentPromptInput = {
   source: PaymentPromptSource;
+  autoOpenWallet?: boolean;
+  confirmUsed?: boolean;
   merchantName?: string;
   merchantMcc?: number;
   normalizedCategory?: string;
@@ -48,6 +53,8 @@ Notifications.setNotificationHandler({
 export function buildPaymentPromptParams(input: PaymentPromptInput): PaymentPromptParams {
   return cleanParams({
     source: input.source,
+    autoOpenWallet: input.autoOpenWallet ? "1" : undefined,
+    confirmUsed: input.confirmUsed ? "1" : undefined,
     merchantName: input.merchantName,
     merchantMcc: input.merchantMcc,
     normalizedCategory: input.normalizedCategory,
@@ -146,8 +153,22 @@ export async function configurePaymentPromptNotifications() {
     PAYMENT_PROMPT_NOTIFICATION_CATEGORY,
     [
       {
-        identifier: "show-card",
+        identifier: PAYMENT_PROMPT_ACTION_OPEN_WALLET,
+        buttonTitle: "Open Wallet",
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+      {
+        identifier: PAYMENT_PROMPT_ACTION_SHOW_CARD,
         buttonTitle: "Show Card",
+        options: {
+          opensAppToForeground: true,
+        },
+      },
+      {
+        identifier: PAYMENT_PROMPT_ACTION_USED_CARD,
+        buttonTitle: "Used It",
         options: {
           opensAppToForeground: true,
         },

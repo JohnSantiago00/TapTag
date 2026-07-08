@@ -22,6 +22,49 @@ export function createTapTagApp({
     return new Date().toISOString();
   }
 
+  function cleanString(value, maxLength) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed.slice(0, maxLength);
+  }
+
+  function cleanLast4(value) {
+    if (typeof value !== 'string') return null;
+    const digits = value.replace(/\D/g, '').slice(0, 4);
+    return digits.length === 4 ? digits : null;
+  }
+
+  function cleanCardColor(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed.toUpperCase() : null;
+  }
+
+  function walletRefFromDoc(doc) {
+    return {
+      id: doc.cardProductId,
+      enabled: doc.enabled !== false,
+      nickname: typeof doc.nickname === 'string' ? doc.nickname : undefined,
+      last4: typeof doc.last4 === 'string' ? doc.last4 : undefined,
+      color: typeof doc.color === 'string' ? doc.color : undefined,
+      addedAt: typeof doc.addedAt === 'string' ? doc.addedAt : nowIso(),
+      updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : nowIso(),
+    };
+  }
+
+  function companionPassPreviewFromDoc(doc) {
+    if (!doc) return null;
+
+    return {
+      merchantName: doc.merchantName,
+      normalizedCategory: doc.normalizedCategory,
+      recommendedCardName: doc.recommendedCardName,
+      rewardRate: doc.rewardRate,
+      updatedAt: doc.updatedAt,
+    };
+  }
+
   function profileFromDoc(doc) {
     const now = nowIso();
     return {
@@ -110,15 +153,7 @@ export function createTapTagApp({
       .sort({ addedAt: 1 })
       .toArray();
 
-    res.json(
-      docs.map((doc) => ({
-        id: doc.cardProductId,
-        enabled: doc.enabled !== false,
-        nickname: typeof doc.nickname === 'string' ? doc.nickname : undefined,
-        addedAt: typeof doc.addedAt === 'string' ? doc.addedAt : nowIso(),
-        updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : nowIso(),
-      }))
-    );
+    res.json(docs.map(walletRefFromDoc));
   });
 
   app.put('/api/users/me/wallet/:cardProductId', async (req, res) => {
@@ -132,10 +167,9 @@ export function createTapTagApp({
       {
         $set: {
           enabled: true,
-          nickname:
-            typeof req.body?.nickname === 'string' && req.body.nickname.trim()
-              ? req.body.nickname.trim()
-              : null,
+          nickname: cleanString(req.body?.nickname, 48),
+          last4: cleanLast4(req.body?.last4),
+          color: cleanCardColor(req.body?.color),
           updatedAt: now,
         },
         $setOnInsert: {
@@ -148,6 +182,73 @@ export function createTapTagApp({
     );
 
     res.status(204).end();
+  });
+
+  app.get('/api/users/me/companion-pass', async (req, res) => {
+    const db = await getDb();
+    const doc = await db.collection('companion_passes').findOne({ uid: req.user.uid });
+
+    if (!doc) {
+      res.json(null);
+      return;
+    }
+
+    const { _id, uid, ...pass } = doc;
+    void _id;
+    void uid;
+    res.json(pass);
+  });
+
+  app.put('/api/users/me/companion-pass', async (req, res) => {
+    const db = await getDb();
+    const now = nowIso();
+    const companionPass = {
+      merchantName: cleanString(req.body?.merchantName, 80) ?? 'this merchant',
+      merchantMcc: Number.isFinite(Number(req.body?.merchantMcc))
+        ? Number(req.body.merchantMcc)
+        : null,
+      normalizedCategory: cleanString(req.body?.normalizedCategory, 48) ?? 'Other',
+      recommendedCardProductId: cleanString(req.body?.recommendedCardProductId, 80),
+      recommendedCardName: cleanString(req.body?.recommendedCardName, 80) ?? 'recommended card',
+      rewardRate: Number.isFinite(Number(req.body?.rewardRate)) ? Number(req.body.rewardRate) : null,
+      reason: cleanString(req.body?.reason, 240),
+      source: cleanString(req.body?.source, 32) ?? 'payment_prompt',
+      updatedAt: now,
+    };
+
+    await db.collection('companion_passes').updateOne(
+      { uid: req.user.uid },
+      {
+        $set: companionPass,
+        $setOnInsert: {
+          uid: req.user.uid,
+          createdAt: now,
+        },
+      },
+      { upsert: true }
+    );
+
+    const saved = await db.collection('companion_passes').findOne({ uid: req.user.uid });
+    const { _id, uid, ...publicPass } = saved;
+    void _id;
+    void uid;
+    res.json(publicPass);
+  });
+
+  app.get('/api/users/me/companion-pass/install-link', async (req, res) => {
+    const db = await getDb();
+    const pass = await db.collection('companion_passes').findOne({ uid: req.user.uid });
+    const platform = req.query.platform === 'android' ? 'android' : 'ios';
+
+    res.status(501).json({
+      configured: false,
+      platform,
+      reason:
+        platform === 'ios'
+          ? 'Apple Wallet pass signing is not configured. Add Pass Type ID, Team ID, signing certificate, and pass web-service credentials.'
+          : 'Google Wallet issuer credentials are not configured. Add issuer ID and service-account signing credentials.',
+      preview: companionPassPreviewFromDoc(pass),
+    });
   });
 
   app.delete('/api/users/me/wallet/:cardProductId', async (req, res) => {

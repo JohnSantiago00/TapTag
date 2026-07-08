@@ -119,6 +119,7 @@ describe('TapTag API app', () => {
       mcc_map: [{ _id: 'mcc_id', mcc: 5814, normalizedCategory: 'Dining' }],
       users: [],
       wallet: [],
+      companion_passes: [],
       events: [],
     });
 
@@ -188,7 +189,7 @@ describe('TapTag API app', () => {
         authorization: 'Bearer test-token',
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ nickname: 'Food card' }),
+      body: JSON.stringify({ nickname: 'Food card', last4: '1234', color: '#00AAFF' }),
     });
     assert.equal(put.response.status, 204);
 
@@ -198,18 +199,59 @@ describe('TapTag API app', () => {
     assert.equal(wallet.response.status, 200);
     assert.deepEqual(Object.keys(wallet.body[0]).sort(), [
       'addedAt',
+      'color',
       'enabled',
       'id',
+      'last4',
       'nickname',
       'updatedAt',
     ]);
     assert.equal(wallet.body[0].id, 'amex_gold');
+    assert.equal(wallet.body[0].last4, '1234');
+    assert.equal(wallet.body[0].color, '#00AAFF');
 
     const removed = await request(baseUrl, '/api/users/me/wallet/amex_gold', {
       method: 'DELETE',
       headers: { authorization: 'Bearer test-token' },
     });
     assert.equal(removed.response.status, 204);
+  });
+
+  it('stores companion pass recommendation state and reports missing issuer setup', async () => {
+    const saved = await request(baseUrl, '/api/users/me/companion-pass', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        merchantName: 'Starbucks',
+        merchantMcc: 5814,
+        normalizedCategory: 'Dining',
+        recommendedCardProductId: 'amex_gold',
+        recommendedCardName: 'American Express Gold',
+        rewardRate: 4,
+        reason: 'Best direct match',
+        source: 'lab',
+      }),
+    });
+
+    assert.equal(saved.response.status, 200);
+    assert.equal(saved.body.merchantName, 'Starbucks');
+    assert.equal(saved.body.recommendedCardName, 'American Express Gold');
+
+    const loaded = await request(baseUrl, '/api/users/me/companion-pass', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(loaded.response.status, 200);
+    assert.equal(loaded.body.normalizedCategory, 'Dining');
+
+    const installLink = await request(baseUrl, '/api/users/me/companion-pass/install-link?platform=ios', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(installLink.response.status, 501);
+    assert.equal(installLink.body.configured, false);
+    assert.equal(installLink.body.preview.recommendedCardName, 'American Express Gold');
   });
 
   it('records events server-side and clamps event query limits', async () => {

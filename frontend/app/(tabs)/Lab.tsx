@@ -12,6 +12,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
 import { getAllCards, KnowledgeCard } from "../../src/services/data/cards";
+import { updateCompanionPassRecommendation } from "../../src/services/data/companionPass";
 import {
   getAllMccMappings,
   MccMapping,
@@ -170,11 +171,25 @@ export default function Lab() {
     }).catch((trackingError) => {
       console.error("Error tracking lab recommendation event:", trackingError);
     });
+
+    updateCompanionPassRecommendation(user.uid, {
+      source: "lab",
+      merchantName: selectedBrand.name,
+      merchantMcc: selectedBrand.mcc,
+      normalizedCategory,
+      recommendedCardProductId: recommendation.bestCard.id,
+      recommendedCardName: recommendation.bestCard.name,
+      rewardRate: recommendation.bestRate,
+      reason: recommendation.reason,
+    }).catch((passError) => {
+      console.error("Error updating companion pass preview:", passError);
+    });
   }, [
     hasWalletCards,
     normalizedCategory,
     recommendation?.bestCard,
     recommendation?.bestRate,
+    recommendation?.reason,
     recommendationKey,
     selectedBrand,
     user,

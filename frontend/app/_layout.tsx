@@ -11,6 +11,8 @@ import {
   buildPaymentPromptHref,
   configurePaymentPromptNotifications,
   isPaymentPromptNotificationData,
+  PAYMENT_PROMPT_ACTION_OPEN_WALLET,
+  PAYMENT_PROMPT_ACTION_USED_CARD,
 } from "../src/services/paymentPrompt";
 
 /*
@@ -47,6 +49,10 @@ function RootNavigator() {
         router.push(
           buildPaymentPromptHref({
             source: "notification",
+            autoOpenWallet:
+              response.actionIdentifier === PAYMENT_PROMPT_ACTION_OPEN_WALLET,
+            confirmUsed:
+              response.actionIdentifier === PAYMENT_PROMPT_ACTION_USED_CARD,
             merchantName: data.merchantName,
             merchantMcc: Number(data.merchantMcc) || undefined,
             normalizedCategory: data.normalizedCategory,

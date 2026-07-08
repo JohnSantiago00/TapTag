@@ -121,6 +121,8 @@ export default function Profile() {
       payment_prompt_opened: 0,
       payment_wallet_opened: 0,
       payment_prompt_confirmed: 0,
+      payment_prompt_feedback: 0,
+      companion_pass_updated: 0,
       wallet_updated: 0,
       brand_muted: 0,
     } as Record<string, number>
@@ -147,6 +149,10 @@ export default function Profile() {
         return `Wallet handoff${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
       case "payment_prompt_confirmed":
         return `Used card${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+      case "payment_prompt_feedback":
+        return `Payment feedback${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+      case "companion_pass_updated":
+        return `Companion pass updated${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
       case "brand_muted":
         return `Muted${event.brandName ? `, ${event.brandName}` : ""}`;
       default:
@@ -249,7 +255,9 @@ export default function Profile() {
               <Text style={styles.metricValue}>
                 {eventCounts.payment_prompt_opened +
                   eventCounts.payment_wallet_opened +
-                  eventCounts.payment_prompt_confirmed}
+                  eventCounts.payment_prompt_confirmed +
+                  eventCounts.payment_prompt_feedback +
+                  eventCounts.companion_pass_updated}
               </Text>
             </View>
           </View>

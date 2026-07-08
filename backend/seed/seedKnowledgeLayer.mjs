@@ -125,6 +125,31 @@ const cards = [
     annualFee: 0,
     issuerWebsite: 'https://www.amazon.com/Prime-Visa/dp/BT00LN946S',
   },
+  {
+    id: 'chase_freedom_unlimited',
+    name: 'Chase Freedom Unlimited',
+    issuer: 'Chase',
+    network: 'Visa',
+    rewardRules: [
+      { category: 'Dining', rate: 3 },
+      { category: 'Travel', rate: 5 },
+      { category: 'Other', rate: 1.5 },
+    ],
+    annualFee: 0,
+    issuerWebsite: 'https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited',
+  },
+  {
+    id: 'capital_one_venture_x',
+    name: 'Capital One Venture X',
+    issuer: 'Capital One',
+    network: 'Visa',
+    rewardRules: [
+      { category: 'Travel', rate: 5 },
+      { category: 'Other', rate: 2 },
+    ],
+    annualFee: 395,
+    issuerWebsite: 'https://www.capitalone.com/credit-cards/venture-x/',
+  },
 ];
 
 const mccMap = [
@@ -139,6 +164,9 @@ const mccMap = [
   { mcc: 4722, category: 'Travel - Agencies', normalizedCategory: 'Travel', description: 'Travel agencies and online travel booking', exampleBrands: ['Expedia'] },
   { mcc: 7011, category: 'Travel - Lodging', normalizedCategory: 'Travel', description: 'Hotels, motels, and resorts', exampleBrands: ['Marriott'] },
   { mcc: 5541, category: 'Gas Stations', normalizedCategory: 'Gas', description: 'Fuel and convenience services', exampleBrands: ['Shell', 'BP'] },
+  { mcc: 5912, category: 'Drug Stores and Pharmacies', normalizedCategory: 'Other', description: 'Pharmacy, drug store, and health retail purchases', exampleBrands: ['CVS', 'Walgreens'] },
+  { mcc: 5942, category: 'Book Stores', normalizedCategory: 'Online Shopping', description: 'Bookstores and mixed online retail catalogs', exampleBrands: ['Barnes & Noble'] },
+  { mcc: 5999, category: 'Miscellaneous Retail', normalizedCategory: 'Other', description: 'Specialty retail merchants without a stronger category', exampleBrands: ['Best Buy'] },
   { mcc: 7832, category: 'Entertainment - Movie Theaters', normalizedCategory: 'Entertainment', description: 'Movie theaters and ticketing', exampleBrands: ['AMC Theatres'] },
   { mcc: 7922, category: 'Entertainment - Live Events', normalizedCategory: 'Entertainment', description: 'Concerts, events, and theatrical producers', exampleBrands: ['Ticketmaster'] },
 ];
@@ -158,6 +186,19 @@ const brands = [
   { id: 'amc_theatres', name: 'AMC Theatres', category: 'Movie Theater', mcc: 7832, brandLogo: 'https://logo.clearbit.com/amctheatres.com', commonLocations: [{ lat: 39.0997, lon: -94.5786, address: 'Kansas City, MO' }] },
   { id: 'ticketmaster', name: 'Ticketmaster', category: 'Live Events', mcc: 7922, brandLogo: 'https://logo.clearbit.com/ticketmaster.com', commonLocations: [{ lat: 34.0522, lon: -118.2437, address: 'Los Angeles, CA' }] },
   { id: 'expedia', name: 'Expedia', category: 'Travel Booking', mcc: 4722, brandLogo: 'https://logo.clearbit.com/expedia.com', commonLocations: [] },
+  { id: 'mcdonalds', name: 'McDonald\'s', category: 'Fast Food', mcc: 5814, brandLogo: 'https://logo.clearbit.com/mcdonalds.com', commonLocations: [{ lat: 41.8781, lon: -87.6298, address: 'Chicago, IL' }] },
+  { id: 'chipotle', name: 'Chipotle', category: 'Fast Casual', mcc: 5814, brandLogo: 'https://logo.clearbit.com/chipotle.com', commonLocations: [{ lat: 39.7392, lon: -104.9903, address: 'Denver, CO' }] },
+  { id: 'walmart', name: 'Walmart', category: 'Groceries', mcc: 5411, brandLogo: 'https://logo.clearbit.com/walmart.com', commonLocations: [{ lat: 36.3729, lon: -94.2088, address: 'Bentonville, AR' }] },
+  { id: 'costco', name: 'Costco', category: 'Groceries', mcc: 5411, brandLogo: 'https://logo.clearbit.com/costco.com', commonLocations: [{ lat: 47.6101, lon: -122.2015, address: 'Issaquah, WA' }] },
+  { id: 'bp', name: 'BP', category: 'Gas Station', mcc: 5541, brandLogo: 'https://logo.clearbit.com/bp.com', commonLocations: [{ lat: 41.8781, lon: -87.6298, address: 'Chicago, IL' }] },
+  { id: 'chevron', name: 'Chevron', category: 'Gas Station', mcc: 5541, brandLogo: 'https://logo.clearbit.com/chevron.com', commonLocations: [{ lat: 37.7749, lon: -122.4194, address: 'San Francisco, CA' }] },
+  { id: 'lyft', name: 'Lyft', category: 'Rideshare', mcc: 4121, brandLogo: 'https://logo.clearbit.com/lyft.com', commonLocations: [{ lat: 37.7749, lon: -122.4194, address: 'San Francisco, CA' }] },
+  { id: 'united', name: 'United Airlines', category: 'Airline', mcc: 4511, brandLogo: 'https://logo.clearbit.com/united.com', commonLocations: [{ lat: 41.9742, lon: -87.9073, address: 'Chicago O\'Hare' }] },
+  { id: 'hilton', name: 'Hilton', category: 'Hotel', mcc: 7011, brandLogo: 'https://logo.clearbit.com/hilton.com', commonLocations: [{ lat: 38.9072, lon: -77.0369, address: 'Washington, DC' }] },
+  { id: 'cvs', name: 'CVS Pharmacy', category: 'Pharmacy', mcc: 5912, brandLogo: 'https://logo.clearbit.com/cvs.com', commonLocations: [{ lat: 42.3601, lon: -71.0589, address: 'Boston, MA' }] },
+  { id: 'walgreens', name: 'Walgreens', category: 'Pharmacy', mcc: 5912, brandLogo: 'https://logo.clearbit.com/walgreens.com', commonLocations: [{ lat: 41.8781, lon: -87.6298, address: 'Chicago, IL' }] },
+  { id: 'barnes_noble', name: 'Barnes & Noble', category: 'Books', mcc: 5942, brandLogo: 'https://logo.clearbit.com/barnesandnoble.com', commonLocations: [{ lat: 40.7128, lon: -74.006, address: 'New York, NY' }] },
+  { id: 'best_buy', name: 'Best Buy', category: 'Electronics', mcc: 5999, brandLogo: 'https://logo.clearbit.com/bestbuy.com', commonLocations: [{ lat: 44.9778, lon: -93.265, address: 'Minneapolis, MN' }] },
 ];
 
 function assert(condition, message) {

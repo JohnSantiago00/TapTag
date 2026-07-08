@@ -13,6 +13,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
 import { getAllCards } from "../../src/services/data/cards";
+import { updateCompanionPassRecommendation } from "../../src/services/data/companionPass";
 import { trackUserEvent } from "../../src/services/data/events";
 import { getAllMccMappings } from "../../src/services/data/mccMap";
 import { getUserWallet } from "../../src/services/data/wallet";
@@ -269,6 +270,19 @@ export default function Nearby() {
       },
     }).catch((trackingError) => {
       console.error("Error tracking nearby recommendation event:", trackingError);
+    });
+
+    updateCompanionPassRecommendation(user.uid, {
+      source: "nearby",
+      merchantName: match.brand.name,
+      merchantMcc: match.brand.mcc,
+      normalizedCategory: match.normalizedCategory,
+      recommendedCardProductId: match.recommendation.bestCard.id,
+      recommendedCardName: match.recommendation.bestCard.name,
+      rewardRate: match.recommendation.bestRate,
+      reason: match.recommendation.reason,
+    }).catch((passError) => {
+      console.error("Error updating nearby companion pass preview:", passError);
     });
 
     if (lastScheduledPaymentPromptKey.current !== recommendationKey) {

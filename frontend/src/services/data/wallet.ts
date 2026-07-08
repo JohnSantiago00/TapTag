@@ -13,8 +13,16 @@ export interface WalletCardRef {
   id: string;
   enabled: boolean;
   nickname?: string;
+  last4?: string;
+  color?: string;
   addedAt: string;
   updatedAt: string;
+}
+
+export interface WalletCardDetails {
+  nickname?: string | null;
+  last4?: string | null;
+  color?: string | null;
 }
 
 // The wallet stores references to card products only. This is the core privacy
@@ -31,13 +39,17 @@ export async function getUserWallet(uid: string): Promise<WalletCardRef[]> {
 export async function addWalletCard(
   uid: string,
   cardProductId: string,
-  nickname?: string
+  details: WalletCardDetails = {}
 ) {
   void uid;
   await apiRequest<void>(`/api/users/me/wallet/${cardProductId}`, {
     method: "PUT",
     authRequired: true,
-    body: { nickname: nickname ?? null },
+    body: {
+      nickname: details.nickname ?? null,
+      last4: details.last4 ?? null,
+      color: details.color ?? null,
+    },
   });
 }
 
