@@ -1,5 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  getTabBarBottomPadding,
+  getTabBarHeight,
+} from "../../src/styles/layout";
 
 /*
   File role:
@@ -13,6 +18,8 @@ import { Tabs } from "expo-router";
 // configure Wallet, verify the engine in Lab, test the magic moment in Nearby,
 // then confirm state and events in Profile.
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -21,7 +28,15 @@ export default function TabsLayout() {
         // prototype, even though the product scope is still intentionally thin.
         tabBarActiveTintColor: "#0af",
         tabBarInactiveTintColor: "#888",
-        tabBarStyle: { backgroundColor: "#000" },
+        tabBarHideOnKeyboard: true,
+        tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
+        tabBarStyle: {
+          backgroundColor: "#000",
+          borderTopColor: "#222",
+          height: getTabBarHeight(insets.bottom),
+          paddingBottom: getTabBarBottomPadding(insets.bottom),
+          paddingTop: 6,
+        },
       }}
     >
       <Tabs.Screen

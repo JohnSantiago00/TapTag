@@ -1,6 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getApp, getApps, initializeApp } from "firebase/app";
+import { FirebaseError, getApp, getApps, initializeApp } from "firebase/app";
+import * as firebaseAuth from "firebase/auth";
 import { getAuth, initializeAuth } from "firebase/auth";
+
+// The React Native build of firebase/auth ships an official AsyncStorage
+// persistence factory, but the published TypeScript types only describe the
+// browser build, so it has to be pulled off the module object.
+const getReactNativePersistence = (
+  firebaseAuth as unknown as {
+    getReactNativePersistence?: (storage: typeof AsyncStorage) => unknown;
+  }
+).getReactNativePersistence;
 
 /*
   File role:
@@ -82,12 +92,30 @@ function createReactNativePersistence(storage: typeof AsyncStorage) {
   };
 }
 
-// Reuse an existing auth instance when hot reload or prior initialization has
-// already created one. Otherwise initialize with React Native persistence.
-const auth = hasApp
-  ? getAuth(app)
-  : initializeAuth(app, {
-      persistence: createReactNativePersistence(AsyncStorage) as never,
+// An existing Firebase app does not imply that Auth has been initialized.
+// Calling getAuth() in that state is what triggers Firebase's React Native
+// warning and creates memory-only auth, so always try persistence first. Hot
+// reload can leave an already-configured Auth instance behind; only then is
+// getAuth() safe because the provider is already initialized.
+function getOrInitializeAuth() {
+  try {
+    return initializeAuth(app, {
+      persistence: (getReactNativePersistence
+        ? getReactNativePersistence(AsyncStorage)
+        : createReactNativePersistence(AsyncStorage)) as never,
     });
+  } catch (error) {
+    if (
+      error instanceof FirebaseError &&
+      error.code === "auth/already-initialized"
+    ) {
+      return getAuth(app);
+    }
+
+    throw error;
+  }
+}
+
+const auth = getOrInitializeAuth();
 
 export { app, auth };

@@ -6,12 +6,16 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../../src/context/AuthContext";
 import { getRecentUserEvents, TapTagEvent } from "../../src/services/data/events";
 import { getUserProfile } from "../../src/services/data/userProfile";
 import { getUserWallet } from "../../src/services/data/wallet";
+import { buildPaymentPromptHref } from "../../src/services/paymentPrompt";
+import { getTabScrollContentStyle } from "../../src/styles/layout";
 
 /*
   File role:
@@ -25,6 +29,8 @@ import { getUserWallet } from "../../src/services/data/wallet";
 export default function Home() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [walletCount, setWalletCount] = useState(0);
   const [recentEvents, setRecentEvents] = useState<TapTagEvent[]>([]);
@@ -85,88 +91,122 @@ export default function Home() {
   ];
   const completedCount = checklist.filter((item) => item.done).length;
   const setupComplete = completedCount === checklist.length;
+  const latestRecommendation = recentEvents.find(
+    (event) => event.recommendedCardName
+  );
 
   const greeting = displayName ? `Welcome back, ${displayName}` : "Welcome to TapTag";
 
+  function handleOpenPayPrompt() {
+    if (!latestRecommendation?.recommendedCardName) {
+      router.push("/(tabs)/Lab");
+      return;
+    }
+
+    router.push(
+      buildPaymentPromptHref({
+        source: latestRecommendation.source === "nearby" ? "nearby" : "lab",
+        merchantName: latestRecommendation.brandName,
+        merchantMcc: latestRecommendation.merchantMcc,
+        normalizedCategory: latestRecommendation.normalizedCategory,
+        recommendedCardProductId: latestRecommendation.recommendedCardProductId,
+        recommendedCardName: latestRecommendation.recommendedCardName,
+        rewardRate:
+          typeof latestRecommendation.metadata?.rewardRate === "number"
+            ? latestRecommendation.metadata.rewardRate
+            : undefined,
+      })
+    );
+  }
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor="#0af"
-        />
-      }
-    >
-      <Text style={styles.title}>TapTag</Text>
-      <Text style={styles.subtitle}>{greeting}</Text>
-      <Text style={styles.tagline}>
-        The right card from your wallet, for every merchant — without storing
-        card numbers, CVV, or bank credentials.
-      </Text>
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>
-          {setupComplete ? "You're all set" : `Setup progress (${completedCount}/${checklist.length})`}
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={getTabScrollContentStyle(width, insets)}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor="#0af"
+          />
+        }
+      >
+        <Text style={styles.title}>TapTag</Text>
+        <Text style={styles.subtitle}>{greeting}</Text>
+        <Text style={styles.tagline}>
+          The right card from your wallet, for every merchant — without storing
+          card numbers, CVV, or bank credentials.
         </Text>
-        {checklist.map((item) => (
-          <View key={item.label} style={styles.checklistRow}>
-            <Text style={[styles.checklistIcon, item.done && styles.checklistIconDone]}>
-              {item.done ? "✓" : "○"}
-            </Text>
-            <Text style={[styles.checklistText, item.done && styles.checklistTextDone]}>
-              {item.label}
-            </Text>
-          </View>
-        ))}
-        {loaded && !setupComplete ? (
-          <Text style={styles.helperNote}>
-            {walletCount === 0
-              ? "Start by adding the cards you own in Wallet."
-              : "Try a recommendation in Lab, then test a live nudge in Nearby."}
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>
+            {setupComplete ? "You're all set" : `Setup progress (${completedCount}/${checklist.length})`}
           </Text>
-        ) : null}
-      </View>
+          {checklist.map((item) => (
+            <View key={item.label} style={styles.checklistRow}>
+              <Text style={[styles.checklistIcon, item.done && styles.checklistIconDone]}>
+                {item.done ? "✓" : "○"}
+              </Text>
+              <Text style={[styles.checklistText, item.done && styles.checklistTextDone]}>
+                {item.label}
+              </Text>
+            </View>
+          ))}
+          {loaded && !setupComplete ? (
+            <Text style={styles.helperNote}>
+              {walletCount === 0
+                ? "Start by adding the cards you own in Wallet."
+                : "Try a recommendation in Lab, then test a live nudge in Nearby."}
+            </Text>
+          ) : null}
+        </View>
 
-      <View style={styles.actionsRow}>
-        {/* These buttons are explicit instead of relying on the tab bar alone,
-            because first-run clarity matters more than avoiding duplicate nav. */}
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Cards")}>
-          <Text style={styles.actionButtonText}>Open Wallet</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Lab")}>
-          <Text style={styles.actionButtonText}>Open Lab</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.actionsRow}>
+          {/* These buttons are explicit instead of relying on the tab bar alone,
+              because first-run clarity matters more than avoiding duplicate nav. */}
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Cards")}>
+            <Text style={styles.actionButtonText}>Open Wallet</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton} onPress={handleOpenPayPrompt}>
+            <Text style={styles.actionButtonText}>Pay Prompt</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.actionsRow}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Nearby")}>
-          <Text style={styles.actionButtonText}>Open Nearby</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Profile")}>
-          <Text style={styles.actionButtonText}>Open Profile</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Lab")}>
+            <Text style={styles.actionButtonText}>Open Lab</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Nearby")}>
+            <Text style={styles.actionButtonText}>Open Nearby</Text>
+          </TouchableOpacity>
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>How TapTag works</Text>
-        <Text style={styles.cardText}>1. Add the cards you own in Wallet.</Text>
-        <Text style={styles.cardText}>2. Lab shows the best card for a chosen merchant.</Text>
-        <Text style={styles.cardText}>3. Nearby suggests the best card when you are close to a merchant.</Text>
-        <Text style={styles.cardText}>4. Profile shows your settings and recent activity.</Text>
-      </View>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity style={styles.actionButton} onPress={() => router.push("/(tabs)/Profile")}>
+            <Text style={styles.actionButtonText}>Open Profile</Text>
+          </TouchableOpacity>
+          <View style={styles.actionSpacer} />
+        </View>
 
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Privacy first</Text>
-        <Text style={styles.cardText}>
-          TapTag stores card-product references only. It never stores card
-          numbers, CVV, expiration dates, billing addresses, or bank
-          credentials, and it never keeps a history of your exact location.
-        </Text>
-      </View>
-    </ScrollView>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>How TapTag works</Text>
+          <Text style={styles.cardText}>1. Add the cards you own in Wallet.</Text>
+          <Text style={styles.cardText}>2. Lab shows the best card for a chosen merchant.</Text>
+          <Text style={styles.cardText}>3. Nearby suggests the best card when you are close to a merchant.</Text>
+          <Text style={styles.cardText}>4. Profile shows your settings and recent activity.</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Privacy first</Text>
+          <Text style={styles.cardText}>
+            TapTag stores card-product references only. It never stores card
+            numbers, CVV, expiration dates, billing addresses, or bank
+            credentials, and it never keeps a history of your exact location.
+          </Text>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -175,13 +215,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
-  },
   title: {
     color: "#0af",
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: "700",
     marginBottom: 4,
   },
@@ -199,26 +235,29 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#111",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 8,
+    padding: 14,
+    marginBottom: 12,
   },
   actionsRow: {
     flexDirection: "row",
-    gap: 12,
-    marginBottom: 14,
+    gap: 10,
+    marginBottom: 12,
   },
   actionButton: {
     flex: 1,
     backgroundColor: "#0af",
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 8,
+    paddingVertical: 12,
     alignItems: "center",
   },
   actionButtonText: {
     color: "#00131f",
     fontSize: 15,
     fontWeight: "700",
+  },
+  actionSpacer: {
+    flex: 1,
   },
   checklistRow: {
     flexDirection: "row",

@@ -9,6 +9,12 @@ set -euo pipefail
 # default host choice was advertising the wrong one, so this script nudges Expo
 # toward the Tailscale address when available.
 
+# Expo CLI can block the whole dev server on an interactive "log in with your
+# Expo account?" prompt the first time Expo Go connects. Metro then hangs for
+# every device ("Opening project..." forever). Offline mode skips that prompt;
+# set EXPO_OFFLINE=0 explicitly if you need online CLI features (EAS, tunnels).
+export EXPO_OFFLINE="${EXPO_OFFLINE:-1}"
+
 # Expo sometimes advertises the wrong local interface on machines with both LAN
 # and Tailscale networking. This script prefers tailscale0 so real-device testing
 # works more reliably across the user's setup.

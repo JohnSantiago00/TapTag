@@ -76,6 +76,9 @@ services:
         required: false
     environment:
       EXPO_NO_TELEMETRY: "1"
+      # Never let Expo CLI block Metro on its interactive account prompt when
+      # a device connects; see frontend/scripts/start-expo.sh for details.
+      EXPO_OFFLINE: "1"
       CHOKIDAR_USEPOLLING: "1"
       WATCHPACK_POLLING: "true"
       # For real-device testing from Docker, override this with your host LAN/Tailscale IP:

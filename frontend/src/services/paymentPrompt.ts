@@ -190,13 +190,13 @@ export async function schedulePaymentPromptNotification(input: PaymentPromptInpu
   const merchant = input.merchantName ?? "this merchant";
   const reward =
     typeof input.rewardRate === "number" && input.normalizedCategory
-      ? ` for ${input.rewardRate}x ${input.normalizedCategory}`
-      : "";
+      ? `${input.rewardRate}x ${input.normalizedCategory}`
+      : "best available rewards";
 
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Use ${input.recommendedCardName}`,
-      body: `Tap to see the payment prompt for ${merchant}${reward}.`,
+      title: `You're at ${merchant}: pay with ${input.recommendedCardName}`,
+      body: `${reward}. Tap to open Wallet.`,
       data: getPaymentPromptNotificationData(input),
       categoryIdentifier: PAYMENT_PROMPT_NOTIFICATION_CATEGORY,
     },

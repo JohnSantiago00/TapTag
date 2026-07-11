@@ -28,9 +28,11 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { getTabScrollContentStyle } from "@/src/styles/layout";
 
 /*
   File role:
@@ -47,6 +49,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 // without opening Firebase.
 export default function Profile() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [walletCount, setWalletCount] = useState(0);
   const [recentEvents, setRecentEvents] = useState<TapTagEvent[]>([]);
@@ -329,7 +333,7 @@ export default function Profile() {
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={getTabScrollContentStyle(width, insets)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -535,10 +539,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
   },
   loadingContainer: {
     flex: 1,

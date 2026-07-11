@@ -12,7 +12,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.santiagojohn00.tapTag",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSCameraUsageDescription": "TapTag uses the camera to scan card text on-device and keep only the network and last 4 digits.",
+        "NSLocationWhenInUseUsageDescription": "TapTag uses your location to detect when you arrive at a merchant and recommend the best card."
       }
     },
     "android": {
@@ -23,7 +25,13 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "output": "static",
