@@ -1,17 +1,26 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import {
-  FlatList,
   ActivityIndicator,
+  FlatList,
+  Keyboard,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect } from "expo-router";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  KeyboardDoneBar,
+  KeyboardDoneInline,
+  NUMERIC_INPUT_ACCESSORY_ID,
+  dismissKeyboard,
+} from "../../src/components/KeyboardDoneBar";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllCards, KnowledgeCard } from "../../src/services/data/cards";
 import { trackUserEvent } from "../../src/services/data/events";
@@ -21,6 +30,7 @@ import {
   removeWalletCard,
   WalletCardRef,
 } from "../../src/services/data/wallet";
+import { getTabScrollContentStyle } from "../../src/styles/layout";
 
 const CARD_COLORS = ["#00AAFF", "#7C5CFF", "#13C27A", "#FFB020", "#FF5A5F"];
 
@@ -28,6 +38,11 @@ type WalletDraft = {
   nickname: string;
   last4: string;
   color: string;
+};
+
+type SelectedWalletCard = {
+  card: KnowledgeCard;
+  walletRef: WalletCardRef;
 };
 
 /*
@@ -40,20 +55,22 @@ type WalletDraft = {
 */
 
 // Wallet is where the user tells TapTag which card products they actually own.
-// The screen intentionally works with seeded product refs only, not real card
-// credentials.
+// The screen intentionally works with seeded product refs or custom metadata,
+// not real card credentials.
 export default function Cards() {
+  const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [wallet, setWallet] = useState<WalletCardRef[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [walletDrafts, setWalletDrafts] = useState<Record<string, WalletDraft>>({});
   const [error, setError] = useState<string | null>(null);
 
-  // This loader combines global knowledge cards with user-specific wallet refs
-  // so the UI can show both the available catalog and the selected subset.
   const loadWalletScreen = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
       if (!user) return;
@@ -64,11 +81,12 @@ export default function Cards() {
           getAllCards(),
           getUserWallet(user.uid),
         ]);
+        const enabledWallet = selectedWallet.filter((item) => item.enabled);
         setCards(availableCards);
-        setWallet(selectedWallet.filter((item) => item.enabled));
+        setWallet(enabledWallet);
         setWalletDrafts((current) => {
           const next = { ...current };
-          selectedWallet.forEach((item) => {
+          enabledWallet.forEach((item) => {
             next[item.id] = {
               nickname: item.nickname ?? "",
               last4: item.last4 ?? "",
@@ -90,9 +108,6 @@ export default function Cards() {
   useFocusEffect(
     useCallback(() => {
       if (!user) return;
-
-      // Refresh on focus so a tester coming back from another tab sees the
-      // latest wallet state without needing a manual reload button.
       loadWalletScreen();
     }, [loadWalletScreen, user])
   );
@@ -103,21 +118,31 @@ export default function Cards() {
     setRefreshing(false);
   }, [loadWalletScreen]);
 
-  // We derive a Set first because membership checks happen repeatedly while
-  // rendering the list and summary.
   const selectedIds = useMemo(
     () => new Set(wallet.map((item) => item.id)),
     [wallet]
   );
-
-  // selectedCards lets the summary show friendly names instead of raw ids.
-  const selectedCards = useMemo(
-    () => cards.filter((card) => selectedIds.has(card.id)),
-    [cards, selectedIds]
-  );
   const walletById = useMemo(
     () => new Map(wallet.map((item) => [item.id, item])),
     [wallet]
+  );
+  const cardsById = useMemo(
+    () => new Map(cards.map((card) => [card.id, card])),
+    [cards]
+  );
+  const selectedCards = useMemo<SelectedWalletCard[]>(
+    () =>
+      wallet
+        .map((walletRef) => {
+          const card = cardsById.get(walletRef.id) ?? cardFromWalletRef(walletRef);
+          return card ? { card, walletRef } : null;
+        })
+        .filter((item): item is SelectedWalletCard => Boolean(item)),
+    [cardsById, wallet]
+  );
+  const catalogCards = useMemo(
+    () => cards.filter((card) => !card.isCustom),
+    [cards]
   );
 
   function updateWalletDraft(cardId: string, patch: Partial<WalletDraft>) {
@@ -132,8 +157,6 @@ export default function Cards() {
     }));
   }
 
-  // Toggling a wallet card updates the backend first, then records a lightweight
-  // event so Profile can show recent activity and QA can verify behavior.
   async function handleToggleWalletCard(cardId: string, isSelected: boolean) {
     if (!user) return;
 
@@ -142,6 +165,7 @@ export default function Cards() {
     try {
       if (isSelected) {
         await removeWalletCard(user.uid, cardId);
+        if (editingCardId === cardId) setEditingCardId(null);
       } else {
         const card = cards.find((item) => item.id === cardId);
         const draft = walletDrafts[cardId];
@@ -202,6 +226,7 @@ export default function Cards() {
         },
       });
 
+      setEditingCardId(null);
       await loadWalletScreen();
     } catch (saveError) {
       console.error("Error saving wallet card details:", saveError);
@@ -214,7 +239,7 @@ export default function Cards() {
   if (!user) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.headerPadding}>
+        <View style={getTabScrollContentStyle(width, insets)}>
           <Text style={styles.title}>Wallet</Text>
           <View style={styles.infoCard}>
             <Text style={styles.infoText}>
@@ -226,59 +251,102 @@ export default function Cards() {
     );
   }
 
-  // Everything above the catalog rows lives in the list header so the whole
-  // screen scrolls as one surface and pull-to-refresh works from the top.
   const listHeader = (
     <View>
-      <Text style={styles.title}>Wallet</Text>
-
-      <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Privacy-first wallet</Text>
-        <Text style={styles.infoText}>
-          TapTag uses card-product references only, without storing card
-          numbers, CVV, expiration dates, or billing details.
-        </Text>
+      <View style={styles.headerRow}>
+        <View style={styles.headerCopy}>
+          <Text style={styles.title}>Wallet</Text>
+          <Text style={styles.subtitle}>
+            Card metadata only. No full numbers, CVV, expiration, or billing data.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.headerAddButton}
+          onPress={() => router.push("/add-card" as never)}
+          accessibilityLabel="Add custom card"
+        >
+          <Ionicons name="add" size={22} color="#00131f" />
+        </TouchableOpacity>
       </View>
-
-      <Text style={styles.sectionTitle}>Your Cards ({selectedCards.length})</Text>
-      <Text style={styles.helperText}>
-        Lab and Nearby recommendations use these selected card products.
-      </Text>
 
       {selectedCards.length ? (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.walletTilesRow}
+          keyboardShouldPersistTaps="handled"
         >
-          {selectedCards.map((card) => {
-            const walletRef = walletById.get(card.id);
-            const tileColor = walletRef?.color || "#00AAFF";
+          {selectedCards.map(({ card, walletRef }) => {
+            const draft = walletDrafts[walletRef.id] ?? {
+              nickname: walletRef.nickname ?? "",
+              last4: walletRef.last4 ?? "",
+              color: walletRef.color ?? "#00AAFF",
+            };
             return (
-              <View key={card.id} style={[styles.walletTile, { backgroundColor: tileColor }]}>
-                <Text style={styles.walletTileIssuer}>{card.issuer}</Text>
-                <Text style={styles.walletTileName} numberOfLines={2}>
-                  {walletRef?.nickname || card.name}
-                </Text>
-                <View style={styles.walletTileFooter}>
-                  <Text style={styles.walletTileNetwork}>{card.network}</Text>
-                  <Text style={styles.walletTileLast4}>
-                    {walletRef?.last4 ? `•••• ${walletRef.last4}` : ""}
+              <TouchableOpacity
+                key={walletRef.id}
+                style={[styles.walletTile, { backgroundColor: draft.color || "#00AAFF" }]}
+                onPress={() =>
+                  setEditingCardId((current) =>
+                    current === walletRef.id ? null : walletRef.id
+                  )
+                }
+                activeOpacity={0.88}
+              >
+                <View style={styles.walletTileTopRow}>
+                  <Text style={styles.walletTileNetwork}>{networkGlyph(card.network)}</Text>
+                  <Ionicons name="create-outline" size={18} color="#00131f" />
+                </View>
+                <View>
+                  <Text style={styles.walletTileName} numberOfLines={2}>
+                    {draft.nickname || card.name}
+                  </Text>
+                  <Text style={styles.walletTileIssuer} numberOfLines={1}>
+                    {card.issuer}
                   </Text>
                 </View>
-              </View>
+                <Text style={styles.walletTileLast4}>
+                  {draft.last4 ? `•••• ${draft.last4}` : "Tap to edit"}
+                </Text>
+              </TouchableOpacity>
             );
           })}
         </ScrollView>
       ) : (
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryText}>
-            No cards selected yet. Add the cards you own from the catalog below.
+        <View style={styles.emptyWalletCard}>
+          <Text style={styles.emptyTitle}>Add your first card</Text>
+          <Text style={styles.emptyText}>
+            Recommendations start once TapTag knows the cards in your wallet.
           </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => router.push("/add-card" as never)}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#00131f" />
+            <Text style={styles.primaryButtonText}>Add Card</Text>
+          </TouchableOpacity>
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>Card Catalog</Text>
+      {editingCardId ? renderEditPanel(editingCardId) : null}
+
+      <View style={styles.actionRow}>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.push("/add-card" as never)}
+        >
+          <Ionicons name="create-outline" size={18} color="#00131f" />
+          <Text style={styles.primaryButtonText}>Add your own</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.infoCard}>
+        <Text style={styles.infoTitle}>Card catalog</Text>
+        <Text style={styles.infoText}>
+          Add known card products here, or create a custom card for products not
+          listed yet.
+        </Text>
+      </View>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}
 
@@ -291,22 +359,124 @@ export default function Cards() {
         </View>
       ) : null}
 
-      {!loading && !error && !cards.length ? (
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>
-            No card products are available yet.
-          </Text>
+      {!loading && !error && !catalogCards.length ? (
+        <View style={styles.emptyCatalogCard}>
+          <Text style={styles.emptyText}>No catalog card products are available yet.</Text>
         </View>
       ) : null}
     </View>
   );
 
+  function renderEditPanel(cardId: string) {
+    const walletRef = walletById.get(cardId);
+    const card = cardsById.get(cardId) ?? (walletRef ? cardFromWalletRef(walletRef) : null);
+    if (!walletRef || !card) return null;
+
+    const draft = walletDrafts[cardId] ?? {
+      nickname: walletRef.nickname ?? "",
+      last4: walletRef.last4 ?? "",
+      color: walletRef.color ?? "#00AAFF",
+    };
+
+    return (
+      <View style={styles.detailsPanel}>
+        <View style={styles.detailsHeaderRow}>
+          <View style={styles.detailsHeaderCopy}>
+            <Text style={styles.detailsTitle}>{draft.nickname || card.name}</Text>
+            <Text style={styles.detailsMeta}>
+              {card.issuer} • {card.network}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.iconOnlyButton}
+            onPress={() => {
+              Keyboard.dismiss();
+              setEditingCardId(null);
+            }}
+            accessibilityLabel="Close card details"
+          >
+            <Ionicons name="close" size={20} color="#aaa" />
+          </TouchableOpacity>
+        </View>
+
+        <Text style={styles.detailsLabel}>Card Nickname</Text>
+        <TextInput
+          style={styles.detailsInput}
+          placeholder={card.name}
+          placeholderTextColor="#666"
+          value={draft.nickname}
+          onChangeText={(value) => updateWalletDraft(cardId, { nickname: value })}
+          returnKeyType="done"
+          onSubmitEditing={dismissKeyboard}
+        />
+        <View style={styles.detailsLabelRow}>
+          <Text style={styles.detailsLabel}>Last 4</Text>
+          <KeyboardDoneInline />
+        </View>
+        <TextInput
+          style={styles.detailsInput}
+          placeholder="Optional"
+          placeholderTextColor="#666"
+          keyboardType="number-pad"
+          inputAccessoryViewID={NUMERIC_INPUT_ACCESSORY_ID}
+          maxLength={4}
+          returnKeyType="done"
+          value={draft.last4}
+          onChangeText={(value) =>
+            updateWalletDraft(cardId, {
+              last4: value.replace(/\D/g, "").slice(0, 4),
+            })
+          }
+          onSubmitEditing={dismissKeyboard}
+        />
+        <Text style={styles.detailsLabel}>Color</Text>
+        <View style={styles.swatchRow}>
+          {CARD_COLORS.map((color) => (
+            <TouchableOpacity
+              key={color}
+              style={[
+                styles.swatch,
+                { backgroundColor: color },
+                draft.color === color && styles.swatchActive,
+              ]}
+              onPress={() => updateWalletDraft(cardId, { color })}
+              accessibilityLabel={`Use color ${color}`}
+            />
+          ))}
+        </View>
+        <View style={styles.detailsButtonRow}>
+          <TouchableOpacity
+            style={styles.saveDetailsButton}
+            onPress={() => {
+              Keyboard.dismiss();
+              handleSaveWalletDetails(cardId);
+            }}
+            disabled={savingCardId === cardId}
+          >
+            <Text style={styles.saveDetailsText}>
+              {savingCardId === cardId ? "Saving..." : "Save"}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.disableButton}
+            onPress={() => handleToggleWalletCard(cardId, true)}
+            disabled={savingCardId === cardId}
+          >
+            <Text style={styles.disableButtonText}>Disable</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <FlatList
-        data={loading || error ? [] : cards}
+        data={loading || error ? [] : catalogCards}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={getTabScrollContentStyle(width, insets)}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         ListHeaderComponent={listHeader}
         refreshControl={
           <RefreshControl
@@ -325,96 +495,71 @@ export default function Cards() {
           };
 
           return (
-            <View style={styles.cardRow}>
-              <View style={styles.cardHeaderRow}>
-                <View style={styles.cardCopy}>
-                  <View style={styles.cardTitleRow}>
-                    {isSelected ? (
-                      <View
-                        style={[
-                          styles.cardColorDot,
-                          { backgroundColor: draft.color || "#00AAFF" },
-                        ]}
-                      />
-                    ) : null}
-                    <Text style={styles.cardText}>{item.name}</Text>
-                  </View>
-                  <Text style={styles.cardMeta}>
-                    {item.issuer} • {item.network}
-                    {walletRef?.last4 ? ` • **** ${walletRef.last4}` : ""}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() =>
-                    handleToggleWalletCard(item.id, selectedIds.has(item.id))
-                  }
-                  disabled={savingCardId === item.id}
-                >
-                  <Text style={isSelected ? styles.removeText : styles.addText}>
-                    {savingCardId === item.id
-                      ? "Saving..."
-                      : isSelected
-                        ? "Remove"
-                        : "Add"}
-                  </Text>
-                </TouchableOpacity>
+            <View style={styles.catalogRow}>
+              <View style={[styles.catalogCardPreview, { backgroundColor: draft.color }]}>
+                <Text style={styles.catalogPreviewNetwork}>{networkGlyph(item.network)}</Text>
+                <Text style={styles.catalogPreviewLast4}>
+                  {draft.last4 ? `••${draft.last4}` : "••••"}
+                </Text>
               </View>
-
-              {isSelected ? (
-                <View style={styles.detailsPanel}>
-                  <Text style={styles.detailsLabel}>Card Nickname</Text>
-                  <TextInput
-                    style={styles.detailsInput}
-                    placeholder={item.name}
-                    placeholderTextColor="#666"
-                    value={draft.nickname}
-                    onChangeText={(value) =>
-                      updateWalletDraft(item.id, { nickname: value })
-                    }
-                  />
-                  <Text style={styles.detailsLabel}>Last 4</Text>
-                  <TextInput
-                    style={styles.detailsInput}
-                    placeholder="Optional"
-                    placeholderTextColor="#666"
-                    keyboardType="number-pad"
-                    maxLength={4}
-                    value={draft.last4}
-                    onChangeText={(value) =>
-                      updateWalletDraft(item.id, {
-                        last4: value.replace(/\D/g, "").slice(0, 4),
-                      })
-                    }
-                  />
-                  <Text style={styles.detailsLabel}>Color</Text>
-                  <View style={styles.swatchRow}>
-                    {CARD_COLORS.map((color) => (
-                      <TouchableOpacity
-                        key={color}
-                        style={[
-                          styles.swatch,
-                          { backgroundColor: color },
-                          draft.color === color && styles.swatchActive,
-                        ]}
-                        onPress={() => updateWalletDraft(item.id, { color })}
-                      />
-                    ))}
-                  </View>
-                  <TouchableOpacity
-                    style={styles.saveDetailsButton}
-                    onPress={() => handleSaveWalletDetails(item.id)}
-                    disabled={savingCardId === item.id}
-                  >
-                    <Text style={styles.saveDetailsText}>Save Details</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
+              <View style={styles.catalogCopy}>
+                <Text style={styles.catalogTitle} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.catalogMeta} numberOfLines={1}>
+                  {item.issuer} • {item.network}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.catalogActionButton,
+                  isSelected && styles.catalogActionButtonSelected,
+                ]}
+                onPress={() =>
+                  isSelected
+                    ? setEditingCardId(item.id)
+                    : handleToggleWalletCard(item.id, false)
+                }
+                disabled={savingCardId === item.id}
+              >
+                <Text
+                  style={[
+                    styles.catalogActionText,
+                    isSelected && styles.catalogActionTextSelected,
+                  ]}
+                >
+                  {savingCardId === item.id ? "Saving" : isSelected ? "Edit" : "Add"}
+                </Text>
+              </TouchableOpacity>
             </View>
           );
         }}
       />
+      <KeyboardDoneBar />
     </SafeAreaView>
   );
+}
+
+function cardFromWalletRef(walletRef: WalletCardRef): KnowledgeCard | null {
+  if (!walletRef.custom) return null;
+
+  return {
+    id: walletRef.id,
+    name: walletRef.custom.name,
+    issuer: walletRef.custom.issuer || "Custom",
+    network: walletRef.custom.network || "Other",
+    rewardRules: walletRef.custom.rewardRules,
+    annualFee: null,
+    isCustom: true,
+  };
+}
+
+function networkGlyph(network: string) {
+  if (network === "Amex") return "AMEX";
+  if (network === "Mastercard") return "MC";
+  if (network === "Discover") return "DISC";
+  if (network === "Visa") return "VISA";
+  return "CARD";
 }
 
 const styles = StyleSheet.create({
@@ -422,153 +567,143 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#000",
   },
-  headerPadding: {
-    padding: 24,
+  headerRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 18,
   },
-  listContent: {
-    padding: 24,
-    paddingBottom: 40,
+  headerCopy: {
+    flex: 1,
   },
   title: {
-    color: "#0af",
-    fontSize: 28,
+    color: "#fff",
+    fontSize: 30,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  subtitle: {
+    color: "#aaa",
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  headerAddButton: {
+    alignItems: "center",
+    backgroundColor: "#0af",
+    borderRadius: 10,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
+  },
+  walletTilesRow: {
+    gap: 12,
+    paddingBottom: 14,
+  },
+  walletTile: {
+    borderRadius: 16,
+    height: 178,
+    justifyContent: "space-between",
+    padding: 16,
+    width: 282,
+  },
+  walletTileTopRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  walletTileNetwork: {
+    color: "rgba(0, 19, 31, 0.78)",
+    fontSize: 15,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  walletTileName: {
+    color: "#00131f",
+    fontSize: 21,
+    fontWeight: "900",
+    lineHeight: 26,
+  },
+  walletTileIssuer: {
+    color: "rgba(0, 19, 31, 0.68)",
+    fontSize: 13,
     fontWeight: "700",
+    marginTop: 4,
+  },
+  walletTileLast4: {
+    color: "#00131f",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  emptyWalletCard: {
+    backgroundColor: "#111822",
+    borderColor: "#26384a",
+    borderRadius: 12,
+    borderWidth: 1,
     marginBottom: 14,
+    padding: 16,
+  },
+  emptyTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "800",
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: "#aaa",
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  actionRow: {
+    alignItems: "flex-start",
+    marginBottom: 14,
+  },
+  primaryButton: {
+    alignItems: "center",
+    backgroundColor: "#0af",
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  primaryButtonText: {
+    color: "#00131f",
+    fontSize: 14,
+    fontWeight: "800",
   },
   infoCard: {
     backgroundColor: "#111",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 10,
     marginBottom: 12,
+    padding: 14,
   },
   infoTitle: {
     color: "#0af",
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 8,
+    fontSize: 15,
+    fontWeight: "700",
+    marginBottom: 6,
   },
   infoText: {
     color: "#ddd",
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  sectionTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginTop: 8,
-    marginBottom: 6,
-  },
-  helperText: {
-    color: "#888",
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 14,
   },
   loader: {
     marginTop: 16,
   },
-  walletTilesRow: {
-    gap: 12,
-    paddingBottom: 6,
-    marginBottom: 14,
-  },
-  walletTile: {
-    width: 220,
-    height: 130,
-    borderRadius: 14,
-    padding: 14,
-    justifyContent: "space-between",
-  },
-  walletTileIssuer: {
-    color: "rgba(0, 19, 31, 0.75)",
-    fontSize: 12,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  walletTileName: {
-    color: "#00131f",
-    fontSize: 17,
-    fontWeight: "800",
-    lineHeight: 22,
-  },
-  walletTileFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  walletTileNetwork: {
-    color: "rgba(0, 19, 31, 0.75)",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  walletTileLast4: {
-    color: "#00131f",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  cardRow: {
-    backgroundColor: "#111",
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 10,
-  },
-  cardHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  cardCopy: {
-    flex: 1,
-    marginRight: 12,
-  },
-  cardTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  cardColorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-  },
-  cardText: { color: "#fff", fontSize: 16 },
-  cardMeta: {
-    color: "#888",
-    fontSize: 13,
-    marginTop: 4,
-  },
-  addText: {
-    color: "#0af",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  removeText: {
-    color: "#f55",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  summaryCard: {
-    backgroundColor: "#111822",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 14,
-  },
-  summaryText: {
-    color: "#cfe9ff",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyCard: {
+  emptyCatalogCard: {
     backgroundColor: "#111",
     borderRadius: 10,
+    marginBottom: 12,
     padding: 16,
   },
   errorCard: {
     backgroundColor: "#241111",
     borderRadius: 10,
-    padding: 16,
     marginBottom: 14,
+    padding: 16,
   },
   errorText: {
     color: "#ffb3b3",
@@ -588,16 +723,38 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
-  emptyText: {
-    color: "#aaa",
-    fontSize: 15,
-    lineHeight: 21,
-  },
   detailsPanel: {
-    borderTopColor: "#242424",
-    borderTopWidth: 1,
-    marginTop: 12,
-    paddingTop: 12,
+    backgroundColor: "#101010",
+    borderColor: "#242424",
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 14,
+    padding: 14,
+  },
+  detailsHeaderRow: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  detailsHeaderCopy: {
+    flex: 1,
+  },
+  detailsTitle: {
+    color: "#fff",
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  detailsMeta: {
+    color: "#888",
+    fontSize: 13,
+    marginTop: 4,
+  },
+  iconOnlyButton: {
+    alignItems: "center",
+    height: 34,
+    justifyContent: "center",
+    width: 34,
   },
   detailsLabel: {
     color: "#888",
@@ -605,6 +762,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     marginBottom: 6,
     textTransform: "uppercase",
+  },
+  detailsLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
   },
   detailsInput: {
     backgroundColor: "#080808",
@@ -620,28 +782,106 @@ const styles = StyleSheet.create({
   swatchRow: {
     flexDirection: "row",
     gap: 10,
-    marginBottom: 12,
+    marginBottom: 14,
   },
   swatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
     borderColor: "#111",
+    borderRadius: 15,
     borderWidth: 2,
+    height: 30,
+    width: 30,
   },
   swatchActive: {
     borderColor: "#fff",
   },
+  detailsButtonRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
   saveDetailsButton: {
-    alignSelf: "flex-start",
+    alignItems: "center",
     backgroundColor: "#0af",
     borderRadius: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    flex: 1,
+    paddingVertical: 11,
   },
   saveDetailsText: {
     color: "#00131f",
     fontSize: 14,
     fontWeight: "800",
+  },
+  disableButton: {
+    alignItems: "center",
+    backgroundColor: "#211111",
+    borderColor: "#5a2222",
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    paddingVertical: 11,
+  },
+  disableButtonText: {
+    color: "#ff8f8f",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  catalogRow: {
+    alignItems: "center",
+    backgroundColor: "#111",
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: 12,
+    marginBottom: 10,
+    padding: 12,
+  },
+  catalogCardPreview: {
+    borderRadius: 8,
+    height: 54,
+    justifyContent: "space-between",
+    padding: 8,
+    width: 82,
+  },
+  catalogPreviewNetwork: {
+    color: "rgba(0, 19, 31, 0.78)",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+  catalogPreviewLast4: {
+    color: "#00131f",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  catalogCopy: {
+    flex: 1,
+  },
+  catalogTitle: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  catalogMeta: {
+    color: "#888",
+    fontSize: 13,
+    marginTop: 3,
+  },
+  catalogActionButton: {
+    alignItems: "center",
+    backgroundColor: "#0af",
+    borderRadius: 8,
+    minWidth: 58,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  catalogActionButtonSelected: {
+    backgroundColor: "#151515",
+    borderColor: "#333",
+    borderWidth: 1,
+  },
+  catalogActionText: {
+    color: "#00131f",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  catalogActionTextSelected: {
+    color: "#8ecfff",
   },
 });

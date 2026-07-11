@@ -1,4 +1,5 @@
 import { apiRequest } from "../api";
+import type { WalletCardRef } from "./wallet";
 
 /*
   File role:
@@ -20,6 +21,7 @@ export interface KnowledgeCard {
   network: string;
   rewardRules: KnowledgeCardRewardRule[];
   annualFee?: number | null;
+  isCustom?: boolean;
 }
 
 // Seed data is trusted only loosely. These normalizers keep the UI
@@ -45,9 +47,12 @@ function normalizeRewardRules(rawRules: unknown): KnowledgeCardRewardRule[] {
 // Cards are global knowledge-layer docs, not user-owned card instances.
 export async function getAllCards(): Promise<KnowledgeCard[]> {
   try {
-    const cards = await apiRequest<KnowledgeCard[]>("/api/cards");
+    const [cards, customCards] = await Promise.all([
+      apiRequest<KnowledgeCard[]>("/api/cards"),
+      getCustomWalletCards(),
+    ]);
 
-    return cards.map((data) => ({
+    const normalizedCards = cards.map((data) => ({
       id: data.id,
       name: data.name || "Unknown Card",
       issuer: data.issuer || "Unknown Issuer",
@@ -58,8 +63,36 @@ export async function getAllCards(): Promise<KnowledgeCard[]> {
           ? null
           : Number(data.annualFee),
     }));
+    const existingIds = new Set(normalizedCards.map((card) => card.id));
+
+    return [
+      ...normalizedCards,
+      ...customCards.filter((card) => !existingIds.has(card.id)),
+    ];
   } catch (error) {
     console.error("Error fetching cards:", error);
     throw error;
+  }
+}
+
+async function getCustomWalletCards(): Promise<KnowledgeCard[]> {
+  try {
+    const wallet = await apiRequest<WalletCardRef[]>("/api/users/me/wallet", {
+      authRequired: true,
+    });
+
+    return wallet
+      .filter((item) => item.enabled && item.custom)
+      .map((item) => ({
+        id: item.id,
+        name: item.custom?.name || item.nickname || "Custom Card",
+        issuer: item.custom?.issuer || "Custom",
+        network: item.custom?.network || "Other",
+        rewardRules: normalizeRewardRules(item.custom?.rewardRules),
+        annualFee: null,
+        isCustom: true,
+      }));
+  } catch {
+    return [];
   }
 }

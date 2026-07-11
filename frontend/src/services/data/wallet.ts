@@ -15,14 +15,28 @@ export interface WalletCardRef {
   nickname?: string;
   last4?: string;
   color?: string;
+  custom?: CustomWalletCard;
   addedAt: string;
   updatedAt: string;
+}
+
+export interface CustomWalletRewardRule {
+  category: string;
+  rate: number;
+}
+
+export interface CustomWalletCard {
+  name: string;
+  issuer?: string;
+  network?: "Visa" | "Mastercard" | "Amex" | "Discover" | "Other";
+  rewardRules: CustomWalletRewardRule[];
 }
 
 export interface WalletCardDetails {
   nickname?: string | null;
   last4?: string | null;
   color?: string | null;
+  custom?: CustomWalletCard | null;
 }
 
 // The wallet stores references to card products only. This is the core privacy
@@ -49,6 +63,7 @@ export async function addWalletCard(
       nickname: details.nickname ?? null,
       last4: details.last4 ?? null,
       color: details.color ?? null,
+      custom: details.custom ?? undefined,
     },
   });
 }

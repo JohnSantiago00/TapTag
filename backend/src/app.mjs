@@ -17,6 +17,7 @@ const EVENT_TYPES = new Set([
 const EVENT_SOURCES = new Set(['lab', 'nearby', 'wallet', 'profile']);
 
 const CARD_PRODUCT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
+const CUSTOM_CARD_NETWORKS = new Set(['Visa', 'Mastercard', 'Amex', 'Discover', 'Other']);
 
 function createRateLimiter({ windowMs, max }, logger) {
   const hits = new Map();
@@ -136,6 +137,54 @@ export function createTapTagApp({
     return CARD_PRODUCT_ID_PATTERN.test(value) ? value : null;
   }
 
+  function cleanCustomRewardRules(value) {
+    const rewardRules = [];
+
+    if (Array.isArray(value)) {
+      for (const rule of value) {
+        if (rewardRules.length >= 8) break;
+        if (!rule || typeof rule !== 'object' || Array.isArray(rule)) continue;
+
+        const category = cleanString(rule.category, 48);
+        if (!category) continue;
+
+        const rate = Number(rule.rate);
+        if (!Number.isFinite(rate) || rate <= 0) continue;
+
+        rewardRules.push({ category, rate: Math.min(rate, 25) });
+      }
+    }
+
+    if (!rewardRules.some((rule) => rule.category === 'Other')) {
+      if (rewardRules.length >= 8) rewardRules.length = 7;
+      rewardRules.push({ category: 'Other', rate: 1 });
+    }
+
+    return rewardRules;
+  }
+
+  function cleanCustomCard(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+
+    const name = cleanString(value.name, 48);
+    if (!name) return null;
+
+    const custom = {
+      name,
+      rewardRules: cleanCustomRewardRules(value.rewardRules),
+    };
+
+    const issuer = cleanString(value.issuer, 48);
+    if (issuer) custom.issuer = issuer;
+
+    if (Object.prototype.hasOwnProperty.call(value, 'network')) {
+      const network = typeof value.network === 'string' ? value.network.trim() : value.network;
+      custom.network = CUSTOM_CARD_NETWORKS.has(network) ? network : 'Other';
+    }
+
+    return custom;
+  }
+
   // Events are stored with an explicit field whitelist so clients can never
   // persist arbitrary document shapes into MongoDB.
   function cleanEvent(body) {
@@ -197,7 +246,7 @@ export function createTapTagApp({
   }
 
   function walletRefFromDoc(doc) {
-    return {
+    const walletRef = {
       id: doc.cardProductId,
       enabled: doc.enabled !== false,
       nickname: typeof doc.nickname === 'string' ? doc.nickname : undefined,
@@ -206,6 +255,11 @@ export function createTapTagApp({
       addedAt: typeof doc.addedAt === 'string' ? doc.addedAt : nowIso(),
       updatedAt: typeof doc.updatedAt === 'string' ? doc.updatedAt : nowIso(),
     };
+
+    const custom = cleanCustomCard(doc.custom);
+    if (custom) walletRef.custom = custom;
+
+    return walletRef;
   }
 
   function companionPassPreviewFromDoc(doc) {
@@ -348,18 +402,29 @@ export function createTapTagApp({
 
     const db = await getDb();
     const now = nowIso();
+    const body = req.body ?? {};
+    const walletUpdate = {
+      enabled: true,
+      nickname: cleanString(body.nickname, 48),
+      last4: cleanLast4(body.last4),
+      color: cleanCardColor(body.color),
+      updatedAt: now,
+    };
+
+    if (Object.prototype.hasOwnProperty.call(body, 'custom')) {
+      const custom = cleanCustomCard(body.custom);
+      if (!custom) {
+        return res.status(400).json({ error: 'Invalid custom card' });
+      }
+      walletUpdate.custom = custom;
+    }
+
     const existing = await db.collection('wallet').findOne({ uid: req.user.uid, cardProductId });
 
     await db.collection('wallet').updateOne(
       { uid: req.user.uid, cardProductId },
       {
-        $set: {
-          enabled: true,
-          nickname: cleanString(req.body?.nickname, 48),
-          last4: cleanLast4(req.body?.last4),
-          color: cleanCardColor(req.body?.color),
-          updatedAt: now,
-        },
+        $set: walletUpdate,
         $setOnInsert: {
           uid: req.user.uid,
           cardProductId,

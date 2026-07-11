@@ -325,12 +325,103 @@ describe('TapTag API app', () => {
     assert.equal(wallet.body[0].id, 'amex_gold');
     assert.equal(wallet.body[0].last4, '1234');
     assert.equal(wallet.body[0].color, '#00AAFF');
+    assert.equal(wallet.body[0].custom, undefined);
 
     const removed = await request(baseUrl, '/api/users/me/wallet/amex_gold', {
       method: 'DELETE',
       headers: { authorization: 'Bearer test-token' },
     });
     assert.equal(removed.response.status, 204);
+  });
+
+  it('adds custom wallet card data and injects an Other fallback reward rule', async () => {
+    const put = await request(baseUrl, '/api/users/me/wallet/custom-dining-1', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        nickname: 'Food card',
+        custom: {
+          name: '  My Dining Card  ',
+          issuer: '  My Bank  ',
+          network: 'Visa',
+          rewardRules: [{ category: 'Dining', rate: '3.5' }],
+        },
+      }),
+    });
+    assert.equal(put.response.status, 204);
+
+    const wallet = await request(baseUrl, '/api/users/me/wallet', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(wallet.response.status, 200);
+    assert.equal(wallet.body[0].id, 'custom-dining-1');
+    assert.deepEqual(wallet.body[0].custom, {
+      name: 'My Dining Card',
+      issuer: 'My Bank',
+      network: 'Visa',
+      rewardRules: [
+        { category: 'Dining', rate: 3.5 },
+        { category: 'Other', rate: 1 },
+      ],
+    });
+  });
+
+  it('rejects custom wallet cards without a valid name', async () => {
+    const put = await request(baseUrl, '/api/users/me/wallet/custom-empty', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ custom: { issuer: 'Missing Name Bank' } }),
+    });
+
+    assert.equal(put.response.status, 400);
+    assert.deepEqual(put.body, { error: 'Invalid custom card' });
+  });
+
+  it('drops invalid custom reward rules, clamps high rates, and keeps a fallback', async () => {
+    const put = await request(baseUrl, '/api/users/me/wallet/custom-junk-rules', {
+      method: 'PUT',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        custom: {
+          name: 'Rewards Lab',
+          network: 'Diners Club',
+          rewardRules: [
+            { category: '   ', rate: 5 },
+            { category: 'Gas', rate: 'nope' },
+            { category: 'Other', rate: -1 },
+            null,
+            [],
+            { category: 'Travel', rate: 0 },
+            { category: 'Dining', rate: 'Infinity' },
+            { rate: 3 },
+            { category: 'Groceries', rate: 99 },
+          ],
+        },
+      }),
+    });
+    assert.equal(put.response.status, 204);
+
+    const wallet = await request(baseUrl, '/api/users/me/wallet', {
+      headers: { authorization: 'Bearer test-token' },
+    });
+    assert.equal(wallet.response.status, 200);
+    assert.deepEqual(wallet.body[0].custom, {
+      name: 'Rewards Lab',
+      network: 'Other',
+      rewardRules: [
+        { category: 'Groceries', rate: 25 },
+        { category: 'Other', rate: 1 },
+      ],
+    });
   });
 
   it('stores companion pass recommendation state and reports missing issuer setup', async () => {
