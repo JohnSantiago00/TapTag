@@ -77,4 +77,90 @@ describe("recommendBestCardForCategory", () => {
     assert.equal(result.bestRate, 0);
     assert.match(result.reason, /No wallet cards/);
   });
+
+  it("uses custom wallet reward rules when present", () => {
+    const result = recommendBestCardForCategory(
+      [
+        {
+          id: "custom_card",
+          name: "Wallet Ref",
+          rewardRules: [],
+          custom: {
+            name: "My Custom Card",
+            rewardRules: [
+              { category: "Groceries", rate: 5 },
+              { category: "Other", rate: 1 },
+            ],
+          },
+        },
+      ],
+      "Groceries"
+    );
+
+    assert.equal(result.bestCard?.id, "custom_card");
+    assert.equal(result.bestRate, 5);
+    assert.equal(result.matchedCategory, "Groceries");
+  });
+
+  it("prefers a repeatedly confirmed card for the same merchant", () => {
+    const result = recommendBestCardForCategory(
+      [
+        {
+          id: "grocery_card",
+          name: "Grocery Card",
+          rewardRules: [{ category: "Groceries", rate: 5 }],
+        },
+        {
+          id: "habit_card",
+          name: "Habit Card",
+          rewardRules: [{ category: "Groceries", rate: 3 }],
+        },
+      ],
+      "Groceries",
+      {
+        merchantName: "Trader Joe's",
+        learningSignals: {
+          merchantCardUseCounts: {
+            "trader joe's": {
+              habit_card: 2,
+            },
+          },
+        },
+      }
+    );
+
+    assert.equal(result.bestCard?.id, "habit_card");
+    assert.equal(result.bestRate, 3);
+    assert.match(result.reason, /usually use Habit Card here/);
+  });
+
+  it("uses category learning only after repeated confirmations", () => {
+    const result = recommendBestCardForCategory(
+      [
+        {
+          id: "max_card",
+          name: "Max Card",
+          rewardRules: [{ category: "Dining", rate: 4 }],
+        },
+        {
+          id: "category_habit",
+          name: "Category Habit",
+          rewardRules: [{ category: "Dining", rate: 2 }],
+        },
+      ],
+      "Dining",
+      {
+        learningSignals: {
+          categoryCardUseCounts: {
+            dining: {
+              category_habit: 3,
+            },
+          },
+        },
+      }
+    );
+
+    assert.equal(result.bestCard?.id, "category_habit");
+    assert.match(result.reason, /usually use Category Habit for Dining/);
+  });
 });

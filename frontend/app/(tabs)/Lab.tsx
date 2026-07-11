@@ -6,9 +6,10 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
@@ -25,7 +26,12 @@ import {
   PaymentPromptInput,
   schedulePaymentPromptNotification,
 } from "../../src/services/paymentPrompt";
-import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
+import { getPaymentLearningSignals } from "../../src/services/paymentLearning";
+import {
+  recommendBestCardForCategory,
+  type PaymentLearningSignals,
+} from "../../src/utils/recommendCard";
+import { getTabScrollContentStyle } from "../../src/styles/layout";
 
 /*
   File role:
@@ -44,10 +50,14 @@ import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
 export default function Lab() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [cards, setCards] = useState<KnowledgeCard[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mccMappings, setMccMappings] = useState<MccMapping[]>([]);
   const [wallet, setWallet] = useState<WalletCardRef[]>([]);
+  const [learningSignals, setLearningSignals] =
+    useState<PaymentLearningSignals | null>(null);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -67,18 +77,26 @@ export default function Lab() {
       setLoading(true);
       setError(null);
 
-      const [loadedCards, loadedBrands, loadedMccMappings, loadedWallet] =
+      const [
+        loadedCards,
+        loadedBrands,
+        loadedMccMappings,
+        loadedWallet,
+        loadedLearningSignals,
+      ] =
         await Promise.all([
           getAllCards(),
           getAllBrands(),
           getAllMccMappings(),
           getUserWallet(user.uid),
+          getPaymentLearningSignals(user.uid),
         ]);
 
       setCards(loadedCards);
       setBrands(loadedBrands);
       setMccMappings(loadedMccMappings);
       setWallet(loadedWallet.filter((item) => item.enabled));
+      setLearningSignals(loadedLearningSignals);
       setSelectedBrandId((current) => current ?? loadedBrands[0]?.id ?? null);
     } catch (err) {
       console.error("Error loading knowledge layer:", err);
@@ -119,7 +137,10 @@ export default function Lab() {
     mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
   const normalizedCategory = selectedMccMapping?.normalizedCategory ?? "Other";
   const recommendation = selectedBrand
-    ? recommendBestCardForCategory(walletCards, normalizedCategory)
+    ? recommendBestCardForCategory(walletCards, normalizedCategory, {
+        merchantName: selectedBrand.name,
+        learningSignals,
+      })
     : null;
 
   const walletSummary = walletCards.length
@@ -277,7 +298,7 @@ export default function Lab() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={getTabScrollContentStyle(width, insets)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -463,10 +484,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
   },
   stateContainer: {
     flex: 1,

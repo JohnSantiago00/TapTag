@@ -7,9 +7,10 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
@@ -19,13 +20,21 @@ import { trackUserEvent } from "../../src/services/data/events";
 import { getAllMccMappings } from "../../src/services/data/mccMap";
 import { getUserProfile } from "../../src/services/data/userProfile";
 import { getUserWallet } from "../../src/services/data/wallet";
+import { configureArrivalGeofencing } from "../../src/services/arrivalMonitoring";
+import { getPaymentLearningSignals } from "../../src/services/paymentLearning";
 import {
   buildPaymentPromptHref,
   PaymentPromptInput,
   schedulePaymentPromptNotification,
 } from "../../src/services/paymentPrompt";
-import { getDistance } from "../../src/utils/distance";
+import {
+  createArrivalDetectionState,
+  evaluateArrivalDetection,
+  type ArrivalDetectionState,
+  type ArrivalPlace,
+} from "../../src/utils/arrivalDetection";
 import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
+import { getTabScrollContentStyle } from "../../src/styles/layout";
 
 /*
   File role:
@@ -35,10 +44,14 @@ import { recommendBestCardForCategory } from "../../src/utils/recommendCard";
   get location -> find nearest seeded merchant -> resolve category -> recommend
   from wallet -> show nudge -> track whether the user opened or dismissed it.
 
-  It is intentionally foreground-only and seeded-data-only for this stage.
+  Foreground dwell detection drives the current UX. Background geofencing is
+  registered behind a disabled guard for native builds that opt into it later.
 */
 
-const NEARBY_RADIUS_METERS = 500;
+const NEARBY_RADIUS_METERS = 150;
+const ARRIVAL_DWELL_MS = 60_000;
+const ARRIVAL_COOLDOWN_MS = 2 * 60 * 60 * 1000;
+const ARRIVAL_PLACE_ID_SEPARATOR = "::";
 
 // Fixed radius keeps the behavior easy to explain during beta testing. A future
 // version might tune this dynamically or per merchant density.
@@ -50,12 +63,30 @@ type NearbyMatch = {
   recommendation: ReturnType<typeof recommendBestCardForCategory>;
 };
 
+function getArrivalPlaces(brands: Brand[]): ArrivalPlace[] {
+  return brands.flatMap((brand) =>
+    brand.commonLocations.map((location, index) => ({
+      id: `${brand.id}${ARRIVAL_PLACE_ID_SEPARATOR}${index}`,
+      name: brand.name,
+      lat: location.lat,
+      lon: location.lon,
+      radiusMeters: NEARBY_RADIUS_METERS,
+    }))
+  );
+}
+
+function getBrandIdFromPlaceId(placeId: string) {
+  return placeId.split(ARRIVAL_PLACE_ID_SEPARATOR)[0];
+}
+
 // Nearby is the live version of the Lab loop. Instead of a manually selected
 // brand, it picks the nearest seeded merchant based on current foreground
 // location and then runs the same recommendation engine.
 export default function Nearby() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +100,9 @@ export default function Nearby() {
   const lastScheduledPaymentPromptKey = useRef<string | null>(null);
   const locationSubscriptionRef = useRef<Location.LocationSubscription | null>(
     null
+  );
+  const arrivalDetectionStateRef = useRef<ArrivalDetectionState>(
+    createArrivalDetectionState()
   );
 
   // This loader asks for location, pulls the knowledge layer, derives the
@@ -84,7 +118,15 @@ export default function Nearby() {
       setMatch(null);
       setStatus("Checking your current location...");
 
-      const [permission, brands, cards, mccMappings, wallet, profile] =
+      const [
+        permission,
+        brands,
+        cards,
+        mccMappings,
+        wallet,
+        profile,
+        loadedLearningSignals,
+      ] =
         await Promise.all([
           Location.requestForegroundPermissionsAsync(),
           getAllBrands(),
@@ -92,9 +134,11 @@ export default function Nearby() {
           getAllMccMappings(),
           getUserWallet(user.uid),
           getUserProfile(user.uid).catch(() => null),
+          getPaymentLearningSignals(user.uid),
         ]);
 
       setNotificationsEnabled(Boolean(profile?.notificationsEnabled));
+      arrivalDetectionStateRef.current = createArrivalDetectionState();
 
       if (permission.status !== "granted") {
         setStatus("Location permission was not granted.");
@@ -111,72 +155,102 @@ export default function Nearby() {
         return;
       }
 
-      // We intentionally use the nearest seeded brand, not a third-party places
-      // API, because this slice is about proving the TapTag loop, not solving
-      // merchant discovery at production scale.
+      const arrivalPlaces = getArrivalPlaces(brands);
+      const brandByArrivalPlaceId = new Map(
+        arrivalPlaces.map((place) => [place.id, getBrandIdFromPlaceId(place.id)])
+      );
+      configureArrivalGeofencing(arrivalPlaces).catch((geofenceError) => {
+        console.warn("Arrival geofencing is unavailable:", geofenceError);
+      });
+
       const evaluateNearbyLocation = (location: Location.LocationObject) => {
-        let nearestBrand: Brand | null = null;
-        let nearestDistance = Number.POSITIVE_INFINITY;
-
-        for (const brand of brands) {
-          for (const merchantLocation of brand.commonLocations) {
-            const distanceMeters = getDistance(
-              location.coords.latitude,
-              location.coords.longitude,
-              merchantLocation.lat,
-              merchantLocation.lon
-            );
-
-            if (distanceMeters < nearestDistance) {
-              nearestBrand = brand;
-              nearestDistance = distanceMeters;
-            }
+        const detectionResult = evaluateArrivalDetection(
+          arrivalPlaces,
+          {
+            lat: location.coords.latitude,
+            lon: location.coords.longitude,
+            timestampMs: location.timestamp || Date.now(),
+          },
+          arrivalDetectionStateRef.current,
+          {
+            dwellMs: ARRIVAL_DWELL_MS,
+            cooldownMs: ARRIVAL_COOLDOWN_MS,
           }
-        }
+        );
+        arrivalDetectionStateRef.current = detectionResult.state;
 
-        if (!nearestBrand || !Number.isFinite(nearestDistance)) {
+        if (!detectionResult.nearestPlace) {
           setMatch(null);
           setStatus("No seeded merchant locations are available yet.");
           return;
         }
 
-        if (nearestDistance > NEARBY_RADIUS_METERS) {
+        const nearestBrandId = getBrandIdFromPlaceId(
+          detectionResult.nearestPlace.place.id
+        );
+        const nearestBrand =
+          brands.find((brand) => brand.id === nearestBrandId) ?? null;
+
+        if (!detectionResult.nearestPlace.isInsideRadius) {
           setMatch(null);
           setStatus(
-            `No seeded merchants found within ${NEARBY_RADIUS_METERS}m. Nearest known merchant: ${nearestBrand.name} at ${Math.round(
-              nearestDistance
+            `No seeded merchants found within ${NEARBY_RADIUS_METERS}m. Nearest known merchant: ${nearestBrand?.name ?? "Unknown"} at ${Math.round(
+              detectionResult.nearestPlace.distanceMeters
             )}m.`
           );
           return;
         }
 
+        if (!detectionResult.arrivals.length) {
+          setStatus(
+            `Near ${nearestBrand?.name ?? "a seeded merchant"}. Waiting for a ${Math.round(
+              ARRIVAL_DWELL_MS / 1000
+            )}s dwell before nudging.`
+          );
+          return;
+        }
+
+        const arrival = detectionResult.arrivals[0];
+        const arrivedBrandId = brandByArrivalPlaceId.get(arrival.place.id);
+        const arrivedBrand =
+          brands.find((brand) => brand.id === arrivedBrandId) ?? null;
+
+        if (!arrivedBrand) {
+          setStatus("Arrival detected, but the merchant could not be resolved.");
+          return;
+        }
+
         const mapping =
-          mccMappings.find((item) => item.mcc === nearestBrand.mcc) ?? null;
+          mccMappings.find((item) => item.mcc === arrivedBrand.mcc) ?? null;
         const normalizedCategory = mapping?.normalizedCategory ?? "Other";
         const recommendation = recommendBestCardForCategory(
           walletCards,
-          normalizedCategory
+          normalizedCategory,
+          {
+            merchantName: arrivedBrand.name,
+            learningSignals: loadedLearningSignals,
+          }
         );
 
         setMatch({
-          brand: nearestBrand,
-          distanceMeters: nearestDistance,
+          brand: arrivedBrand,
+          distanceMeters: arrival.distanceMeters,
           normalizedCategory,
           recommendation,
         });
-        setStatus("Nearby recommendation ready.");
+        setStatus("Arrival confirmed. Nearby recommendation ready.");
       };
 
       const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Highest,
+        accuracy: Location.Accuracy.Balanced,
       });
       evaluateNearbyLocation(location);
 
       locationSubscriptionRef.current = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Highest,
-          distanceInterval: 1,
-          timeInterval: 1000,
+          accuracy: Location.Accuracy.Balanced,
+          distanceInterval: 50,
+          timeInterval: 15_000,
         },
         evaluateNearbyLocation
       );
@@ -430,7 +504,7 @@ export default function Nearby() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={getTabScrollContentStyle(width, insets)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -441,14 +515,14 @@ export default function Nearby() {
       >
         <Text style={styles.title}>Nearby</Text>
         <Text style={styles.subtitle}>
-          Foreground location checks using seeded merchant locations.
+          Dwell-based location checks using seeded merchant locations.
         </Text>
 
         <View style={styles.guidanceCard}>
           <Text style={styles.guidanceTitle}>How to test Nearby</Text>
           <Text style={styles.guidanceText}>1. Make sure your Wallet has at least one selected card.</Text>
           <Text style={styles.guidanceText}>2. Allow location permission when asked.</Text>
-          <Text style={styles.guidanceText}>3. Use Refresh Nearby Check to retry after moving or changing state.</Text>
+          <Text style={styles.guidanceText}>3. Stay inside a seeded merchant radius for about a minute.</Text>
         </View>
 
         {nudgeText && !isDismissed ? (
@@ -494,10 +568,10 @@ export default function Nearby() {
         {showGuidanceCard ? (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>What to do next</Text>
-            <Text style={styles.status}>
+          <Text style={styles.status}>
               {isDismissed
                 ? "You dismissed the current nudge. Refresh Nearby Check to generate a fresh recommendation."
-                : "Nearby will show a recommendation when TapTag finds a seeded merchant close enough to your current location."}
+                : "Nearby will notify after you dwell at a seeded merchant long enough to count as an arrival."}
             </Text>
           </View>
         ) : null}
@@ -538,10 +612,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
   },
   stateContainer: {
     flex: 1,
@@ -613,6 +683,7 @@ const styles = StyleSheet.create({
   },
   nudgeActions: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10,
     marginTop: 14,
   },
@@ -621,6 +692,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 14,
+    minWidth: 96,
   },
   nudgeButtonPrimaryText: {
     color: "#8ecfff",
@@ -632,6 +704,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 14,
+    minWidth: 88,
   },
   nudgeButtonSecondaryText: {
     color: "#24506b",

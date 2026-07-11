@@ -13,13 +13,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  AppState,
+  AppStateStatus,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { getStackScrollContentStyle } from "@/src/styles/layout";
+import { recordPaymentConfirmation } from "@/src/services/paymentLearning";
 
 function paramValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -28,9 +33,14 @@ function paramValue(value: string | string[] | undefined) {
 export default function PayCardPrompt() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const params = useLocalSearchParams();
   const [status, setStatus] = useState<string | null>(null);
+  const [showPaymentConfirm, setShowPaymentConfirm] = useState(false);
   const handledRouteIntent = useRef(false);
+  const awaitingWalletReturn = useRef(false);
+  const appState = useRef<AppStateStatus>(AppState.currentState);
 
   const recommendedCardName =
     paramValue(params.recommendedCardName) ?? "recommended card";
@@ -48,13 +58,31 @@ export default function PayCardPrompt() {
       ? `${rewardRate}x ${normalizedCategory}`
       : normalizedCategory ?? "best available rewards";
 
-  async function handlePaymentFeedback(outcome: "used" | "not_used" | "wrong_card") {
+  async function handlePaymentFeedback(
+    outcome: "used" | "not_used" | "wrong_card"
+  ) {
     if (!user) {
       setStatus("Sign in is required before TapTag can save this event.");
       return;
     }
 
     try {
+      await recordPaymentConfirmation(user.uid, {
+        outcome:
+          outcome === "used"
+            ? "used_recommended"
+            : outcome === "wrong_card"
+              ? "used_other"
+              : "did_not_pay",
+        source,
+        merchantName,
+        merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : undefined,
+        normalizedCategory,
+        recommendedCardProductId,
+        recommendedCardName,
+        rewardRate: Number.isFinite(rewardRate) ? rewardRate : undefined,
+      });
+
       await trackUserEvent(user.uid, {
         eventType:
           outcome === "used"
@@ -72,6 +100,7 @@ export default function PayCardPrompt() {
           outcome,
         },
       });
+      setShowPaymentConfirm(false);
       if (outcome === "used") {
         setStatus("Saved. TapTag recorded that you used this recommendation.");
       } else if (outcome === "wrong_card") {
@@ -156,6 +185,7 @@ export default function PayCardPrompt() {
     }
 
     if (result.opened) {
+      awaitingWalletReturn.current = true;
       const walletName =
         result.target === "apple_wallet"
           ? "Apple Wallet"
@@ -179,6 +209,26 @@ export default function PayCardPrompt() {
   }
 
   useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextAppState) => {
+      const wasAway =
+        appState.current === "inactive" || appState.current === "background";
+
+      if (
+        awaitingWalletReturn.current &&
+        wasAway &&
+        nextAppState === "active"
+      ) {
+        awaitingWalletReturn.current = false;
+        setShowPaymentConfirm(true);
+      }
+
+      appState.current = nextAppState;
+    });
+
+    return () => subscription.remove();
+  }, []);
+
+  useEffect(() => {
     if (handledRouteIntent.current) return;
     handledRouteIntent.current = true;
 
@@ -197,7 +247,11 @@ export default function PayCardPrompt() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={getStackScrollContentStyle(width, insets)}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.eyebrow}>TapTag Pay Prompt</Text>
         <Text style={styles.title}>Use {recommendedCardName}</Text>
         <Text style={styles.subtitle}>
@@ -240,6 +294,36 @@ export default function PayCardPrompt() {
         {status ? (
           <View style={styles.statusCard}>
             <Text style={styles.statusText}>{status}</Text>
+          </View>
+        ) : null}
+
+        {showPaymentConfirm ? (
+          <View style={styles.confirmCard}>
+            <Text style={styles.sectionTitle}>
+              Did you pay with {recommendedCardName}?
+            </Text>
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmButtonPrimary}
+                onPress={() => handlePaymentFeedback("used")}
+              >
+                <Text style={styles.confirmButtonPrimaryText}>Yes</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmButtonSecondary}
+                onPress={() => handlePaymentFeedback("wrong_card")}
+              >
+                <Text style={styles.confirmButtonSecondaryText}>
+                  Used another card
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmButtonSecondary}
+                onPress={() => handlePaymentFeedback("not_used")}
+              >
+                <Text style={styles.confirmButtonSecondaryText}>Did not pay</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : null}
 
@@ -287,10 +371,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#000",
-  },
-  content: {
-    padding: 24,
-    paddingBottom: 40,
   },
   eyebrow: {
     color: "#8ecfff",
@@ -364,6 +444,41 @@ const styles = StyleSheet.create({
     color: "#cfe9ff",
     fontSize: 14,
     lineHeight: 20,
+  },
+  confirmCard: {
+    backgroundColor: "#071722",
+    borderColor: "#0af",
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 14,
+    marginBottom: 14,
+  },
+  confirmActions: {
+    gap: 10,
+  },
+  confirmButtonPrimary: {
+    backgroundColor: "#0af",
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  confirmButtonPrimaryText: {
+    color: "#00131f",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  confirmButtonSecondary: {
+    backgroundColor: "#151515",
+    borderColor: "#2f4b5f",
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 11,
+    alignItems: "center",
+  },
+  confirmButtonSecondaryText: {
+    color: "#cfe9ff",
+    fontSize: 14,
+    fontWeight: "700",
   },
   primaryButton: {
     backgroundColor: "#0af",
