@@ -10,10 +10,21 @@ Required environment:
 MONGODB_URI=mongodb+srv://...
 MONGODB_DB_NAME=taptag
 FIREBASE_PROJECT_ID=your-project-id
+GOOGLE_PLACES_API_KEY=your-server-side-key
 PORT=4000
 HOST=0.0.0.0
 CORS_ORIGIN=*
 ```
+
+Enable **Places API (New)** in Google Cloud. Restrict the key to that API and,
+when the host supports it, to the backend's egress IP. Never add this key to a
+frontend `EXPO_PUBLIC_*` variable.
+
+Nearby uses the `places:searchNearby` endpoint with a narrow field mask and a
+single request per foreground refresh. Google Maps attribution must remain
+visible with the returned merchant list. The app must also publish Terms of Use
+and a Privacy Policy that incorporate the applicable Google terms before store
+release.
 
 Production notes:
 

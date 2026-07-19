@@ -75,7 +75,7 @@ Implemented at a product level:
 - recommendation engine
 - merchant simulation
 - real wallet selection
-- foreground location prototype
+- live foreground merchant discovery through the backend
 - in-app nudge
 - minimal privacy-first user layer
 
@@ -152,11 +152,13 @@ Lab:
 - uses real wallet refs
 
 Nearby:
-- foreground location prototype
-- reads current location
-- compares against seeded merchant locations
-- computes recommendation from selected wallet
-- shows in-app nudge banner when recommendation exists
+- requests foreground location only
+- queries live nearby merchants through the authenticated backend
+- does not persist exact user coordinates or Places responses
+- maps place types to conservative normalized reward categories
+- lets the user choose among nearby merchants before acting
+- computes the recommendation from the selected wallet
+- shows an in-app recommendation when one exists
 
 Profile:
 - minimal

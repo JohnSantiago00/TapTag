@@ -25,6 +25,7 @@ import { useAuth } from "@/src/context/AuthContext";
 import { addWalletCard } from "@/src/services/data/wallet";
 import { trackUserEvent } from "@/src/services/data/events";
 import { getStackScrollContentStyle } from "@/src/styles/layout";
+import { colors, radii } from "@/src/styles/theme";
 import { CustomCardNetwork, isCardScanAvailable } from "@/src/utils/cardScan";
 
 const NETWORKS: CustomCardNetwork[] = [
@@ -185,14 +186,13 @@ export default function AddCard() {
             >
               <Ionicons name="chevron-back" size={22} color="#fff" />
             </TouchableOpacity>
-            <Text style={styles.title}>Add your own card</Text>
+            <View style={styles.headerCopy}><Text style={styles.eyebrow}>Wallet setup</Text><Text style={styles.title}>Add a card</Text></View>
           </View>
 
           <View style={styles.privacyCard}>
             <Ionicons name="shield-checkmark-outline" size={20} color="#8ecfff" />
             <Text style={styles.privacyText}>
-              TapTag keeps only card metadata. Full card numbers, CVV, expiration,
-              and billing details are never stored or uploaded.
+              Add only what helps you recognize the card. Payment credentials are never stored or uploaded.
             </Text>
           </View>
 
@@ -202,11 +202,11 @@ export default function AddCard() {
               onPress={() => router.push("/scan-card" as never)}
             >
               <Ionicons name="camera-outline" size={18} color="#00131f" />
-              <Text style={styles.scanButtonText}>Scan card</Text>
+              <Text style={styles.scanButtonText}>Scan card details</Text>
             </TouchableOpacity>
           ) : null}
 
-          <Text style={styles.label}>Card Name</Text>
+          <Text style={styles.label}>Card name</Text>
           <TextInput
             style={styles.input}
             placeholder="Custom Rewards Card"
@@ -265,7 +265,7 @@ export default function AddCard() {
             onSubmitEditing={dismissKeyboard}
           />
 
-          <Text style={styles.label}>Card Color</Text>
+          <Text style={styles.label}>Card color</Text>
           <View style={styles.swatchRow}>
             {CARD_COLORS.map((item) => (
               <TouchableOpacity
@@ -282,7 +282,7 @@ export default function AddCard() {
           </View>
 
           <View style={styles.rewardHeaderRow}>
-            <Text style={styles.sectionTitle}>Reward Rules</Text>
+            <Text style={styles.sectionTitle}>Reward categories</Text>
             <KeyboardDoneInline />
             <TouchableOpacity
               style={[
@@ -293,7 +293,7 @@ export default function AddCard() {
               disabled={rewardRules.length >= MAX_REWARD_RULES}
             >
               <Ionicons name="add" size={16} color="#00131f" />
-              <Text style={styles.smallButtonText}>Rule</Text>
+              <Text style={styles.smallButtonText}>Add</Text>
             </TouchableOpacity>
           </View>
 
@@ -355,7 +355,7 @@ export default function AddCard() {
             {saving ? (
               <ActivityIndicator color="#00131f" />
             ) : (
-              <Text style={styles.saveButtonText}>Save Card</Text>
+              <Text style={styles.saveButtonText}>Add to wallet</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -368,7 +368,7 @@ export default function AddCard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
   flex: {
     flex: 1,
@@ -381,39 +381,43 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    backgroundColor: "#111",
-    borderColor: "#2a2a2a",
-    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.small,
     borderWidth: 1,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
   title: {
-    color: "#fff",
+    color: colors.text,
     flex: 1,
     fontSize: 26,
     fontWeight: "800",
   },
+  headerCopy: { flex: 1 },
+  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 1, marginBottom: 2, textTransform: "uppercase" },
   privacyCard: {
     alignItems: "flex-start",
-    backgroundColor: "#111822",
-    borderRadius: 10,
+    backgroundColor: "#10271F",
+    borderColor: "#245B49",
+    borderRadius: radii.medium,
+    borderWidth: 1,
     flexDirection: "row",
     gap: 10,
     marginBottom: 14,
     padding: 14,
   },
   privacyText: {
-    color: "#cfe9ff",
+    color: "#A9DCC9",
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
   },
   scanButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 10,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
@@ -421,12 +425,12 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   scanButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 15,
     fontWeight: "800",
   },
   label: {
-    color: "#888",
+    color: colors.textSecondary,
     fontSize: 12,
     fontWeight: "700",
     marginBottom: 6,
@@ -438,11 +442,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   input: {
-    backgroundColor: "#111",
-    borderColor: "#2a2a2a",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
     borderWidth: 1,
-    color: "#fff",
+    color: colors.text,
     fontSize: 15,
     marginBottom: 12,
     paddingHorizontal: 12,
@@ -455,24 +459,24 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   segment: {
-    backgroundColor: "#111",
-    borderColor: "#2a2a2a",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.small,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
   segmentActive: {
-    backgroundColor: "#0af",
-    borderColor: "#0af",
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
   },
   segmentText: {
-    color: "#ddd",
+    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: "700",
   },
   segmentTextActive: {
-    color: "#00131f",
+    color: colors.accentInk,
   },
   swatchRow: {
     flexDirection: "row",
@@ -487,7 +491,7 @@ const styles = StyleSheet.create({
     width: 32,
   },
   swatchActive: {
-    borderColor: "#fff",
+    borderColor: colors.text,
   },
   rewardHeaderRow: {
     alignItems: "center",
@@ -496,14 +500,14 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   sectionTitle: {
-    color: "#fff",
+    color: colors.text,
     fontSize: 16,
     fontWeight: "700",
   },
   smallButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.small,
     flexDirection: "row",
     gap: 4,
     paddingHorizontal: 10,
@@ -513,7 +517,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   smallButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 13,
     fontWeight: "800",
   },
@@ -536,20 +540,20 @@ const styles = StyleSheet.create({
     width: 36,
   },
   statusCard: {
-    backgroundColor: "#111822",
-    borderRadius: 10,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radii.medium,
     marginBottom: 12,
     padding: 14,
   },
   statusText: {
-    color: "#cfe9ff",
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   saveButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 10,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     marginTop: 4,
     paddingVertical: 14,
   },
@@ -557,7 +561,7 @@ const styles = StyleSheet.create({
     opacity: 0.65,
   },
   saveButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 15,
     fontWeight: "800",
   },

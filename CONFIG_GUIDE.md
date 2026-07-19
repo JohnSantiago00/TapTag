@@ -29,6 +29,7 @@ Backend env values are server-side only:
 - `MONGODB_DB_NAME`
 - `PORT`
 - `FIREBASE_PROJECT_ID`
+- `GOOGLE_PLACES_API_KEY` (server-only Places API key for live nearby merchants)
 - `CORS_ORIGIN`
 
 Do not put MongoDB credentials in `frontend/.env`.

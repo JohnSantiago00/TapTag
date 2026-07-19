@@ -14,6 +14,7 @@
     "api": "npm run start --prefix backend",
     "test": "npm run test --prefix backend && npm run test --prefix frontend",
     "smoke:api": "npm run smoke:api --prefix backend",
+    "catalog:audit": "npm run catalog:audit --prefix backend",
     "bootstrap": "npm run doctor --prefix frontend && npm run seed:knowledge --prefix backend",
     "seed:knowledge": "npm run seed:knowledge --prefix backend",
     "cleanup:knowledge": "npm run cleanup:knowledge --prefix backend",

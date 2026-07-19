@@ -12,6 +12,7 @@
     "test": "node --test",
     "smoke:api": "node ./scripts/smoke-api.mjs",
     "setup": "node ./scripts/setup.mjs",
+    "catalog:audit": "node ./scripts/audit-card-catalog.mjs",
     "seed:knowledge": "node ./seed/seedKnowledgeLayer.mjs",
     "cleanup:knowledge": "node ./seed/cleanupKnowledgeLayer.mjs",
     "bootstrap": "node ./seed/seedKnowledgeLayer.mjs"

@@ -1,8 +1,4 @@
 import { useAuth } from "@/src/context/AuthContext";
-import {
-  getCompanionPassInstallLink,
-  updateCompanionPassRecommendation,
-} from "@/src/services/data/companionPass";
 import { trackUserEvent } from "@/src/services/data/events";
 import {
   getWalletInstruction,
@@ -25,6 +21,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { getStackScrollContentStyle } from "@/src/styles/layout";
 import { recordPaymentConfirmation } from "@/src/services/paymentLearning";
+import { IconButton } from "@/src/components/AppChrome";
+import { colors, radii, shadows, spacing } from "@/src/styles/theme";
 
 function paramValue(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
@@ -111,52 +109,6 @@ export default function PayCardPrompt() {
     } catch (error) {
       console.error("Error tracking payment prompt feedback:", error);
       setStatus("Could not save the event, but the recommendation is still valid.");
-    }
-  }
-
-  async function handleUpdateCompanionPass() {
-    if (!user) {
-      setStatus("Sign in is required before TapTag can update your companion pass.");
-      return;
-    }
-
-    try {
-      await updateCompanionPassRecommendation(user.uid, {
-        source,
-        merchantName,
-        merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : null,
-        normalizedCategory: normalizedCategory ?? "Other",
-        recommendedCardProductId: recommendedCardProductId ?? null,
-        recommendedCardName,
-        rewardRate: Number.isFinite(rewardRate) ? rewardRate : null,
-        reason: reason ?? null,
-      });
-
-      await trackUserEvent(user.uid, {
-        eventType: "companion_pass_updated",
-        source: source === "nearby" ? "nearby" : "lab",
-        brandName: merchantName,
-        recommendedCardProductId,
-        recommendedCardName,
-        normalizedCategory,
-        merchantMcc: Number.isFinite(merchantMcc) ? merchantMcc : undefined,
-        metadata: {
-          rewardRate: Number.isFinite(rewardRate) ? rewardRate : null,
-          promptSource: source,
-        },
-      });
-
-      const installLink = await getCompanionPassInstallLink(user.uid).catch(
-        () => null
-      );
-      setStatus(
-        installLink?.configured
-          ? "Companion pass updated. Open Wallet to view the latest recommendation."
-          : "Companion pass preview updated. Apple/Google pass issuer credentials are still needed before TapTag can install a real Wallet pass."
-      );
-    } catch (error) {
-      console.error("Error updating companion pass:", error);
-      setStatus("Could not update the companion pass preview right now.");
     }
   }
 
@@ -252,43 +204,19 @@ export default function PayCardPrompt() {
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.eyebrow}>TapTag Pay Prompt</Text>
-        <Text style={styles.title}>Use {recommendedCardName}</Text>
-        <Text style={styles.subtitle}>
-          {merchantName} • {rewardSummary}
-        </Text>
+        <View style={styles.topBar}><IconButton icon="chevron-back" onPress={() => router.back()} accessibilityLabel="Go back" /><View style={styles.topBarCopy}><Text style={styles.eyebrow}>Your best card</Text><Text style={styles.merchantTitle}>{merchantName}</Text></View></View>
 
         <View style={styles.heroCard}>
-          <Text style={styles.heroLabel}>Recommended Card</Text>
+          <View style={styles.heroTopRow}><View style={styles.readyPill}><Ionicons name="sparkles" size={14} color={colors.accent} /><Text style={styles.readyText}>Recommended</Text></View><Text style={styles.rewardBadge}>{rewardSummary}</Text></View>
           <Text style={styles.cardName}>{recommendedCardName}</Text>
           <Text style={styles.heroReason}>
             {reason ?? `Best match for ${normalizedCategory ?? "this purchase"}.`}
           </Text>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>At checkout</Text>
-          <Text style={styles.bodyText}>
-            {getWalletInstruction(recommendedCardName)}
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Companion Wallet Pass</Text>
-          <Text style={styles.bodyText}>
-            Update the TapTag pass preview with this merchant and card. Real
-            Wallet installation turns on after Apple/Google issuer credentials
-            are configured.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Why this screen exists</Text>
-          <Text style={styles.bodyText}>
-            Apple and Google do not let TapTag preselect a payment card for
-            in-store NFC. This prompt gets you as close as allowed: the right
-            card, the reason, and the exact manual wallet step.
-          </Text>
+        <View style={styles.checkoutCard}>
+          <View style={styles.stepNumber}><Text style={styles.stepNumberText}>1</Text></View>
+          <View style={styles.checkoutCopy}><Text style={styles.sectionTitle}>Open your device wallet</Text><Text style={styles.bodyText}>{getWalletInstruction(recommendedCardName)}</Text></View>
         </View>
 
         {status ? (
@@ -328,20 +256,16 @@ export default function PayCardPrompt() {
         ) : null}
 
         <TouchableOpacity style={styles.walletButton} onPress={handleOpenWallet}>
-          <Ionicons name="wallet-outline" size={18} color="#00131f" />
+          <Ionicons name="wallet-outline" size={19} color={colors.accentInk} />
           <Text style={styles.walletButtonText}>{getWalletOpenButtonLabel()}</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.passButton} onPress={handleUpdateCompanionPass}>
-          <Ionicons name="ticket-outline" size={18} color="#8ecfff" />
-          <Text style={styles.passButtonText}>Update Companion Pass</Text>
+          <Ionicons name="arrow-forward" size={18} color={colors.accentInk} />
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.primaryButton}
           onPress={() => handlePaymentFeedback("used")}
         >
-          <Text style={styles.primaryButtonText}>I Used This Card</Text>
+          <Ionicons name="checkmark-circle-outline" size={18} color={colors.text} /><Text style={styles.primaryButtonText}>I used this card</Text>
         </TouchableOpacity>
 
         <View style={styles.feedbackRow}>
@@ -349,19 +273,16 @@ export default function PayCardPrompt() {
             style={styles.feedbackButton}
             onPress={() => handlePaymentFeedback("not_used")}
           >
-            <Text style={styles.feedbackButtonText}>No</Text>
+            <Text style={styles.feedbackButtonText}>Didn’t pay</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.feedbackButton}
             onPress={() => handlePaymentFeedback("wrong_card")}
           >
-            <Text style={styles.feedbackButtonText}>Wrong Card</Text>
+            <Text style={styles.feedbackButtonText}>Used another card</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.secondaryButton} onPress={() => router.back()}>
-          <Text style={styles.secondaryButtonText}>Back to TapTag</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -370,15 +291,18 @@ export default function PayCardPrompt() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
+  topBar: { alignItems: "center", flexDirection: "row", gap: spacing.md, marginBottom: spacing.xl },
+  topBarCopy: { flex: 1 },
   eyebrow: {
-    color: "#8ecfff",
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 8,
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: "800",
+    marginBottom: 4,
     textTransform: "uppercase",
   },
+  merchantTitle: { color: colors.text, fontSize: 22, fontWeight: "900", letterSpacing: -0.6 },
   title: {
     color: "#fff",
     fontSize: 30,
@@ -393,11 +317,18 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   heroCard: {
-    backgroundColor: "#0af",
-    borderRadius: 14,
-    padding: 18,
-    marginBottom: 14,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: "#315644",
+    borderRadius: radii.xlarge,
+    borderWidth: 1,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+    ...shadows.soft,
   },
+  heroTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.lg },
+  readyPill: { alignItems: "center", backgroundColor: "#15372C", borderRadius: radii.pill, flexDirection: "row", gap: 6, paddingHorizontal: 9, paddingVertical: 6 },
+  readyText: { color: colors.accent, fontSize: 10, fontWeight: "800", textTransform: "uppercase" },
+  rewardBadge: { backgroundColor: colors.surfaceSoft, borderRadius: radii.pill, color: colors.blue, fontSize: 11, fontWeight: "800", overflow: "hidden", paddingHorizontal: 9, paddingVertical: 6 },
   heroLabel: {
     color: "#002133",
     fontSize: 12,
@@ -406,17 +337,22 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   cardName: {
-    color: "#00131f",
-    fontSize: 24,
-    fontWeight: "800",
-    lineHeight: 30,
+    color: colors.text,
+    fontSize: 27,
+    fontWeight: "900",
+    letterSpacing: -0.8,
+    lineHeight: 33,
     marginBottom: 10,
   },
   heroReason: {
-    color: "#002133",
-    fontSize: 15,
+    color: colors.textSecondary,
+    fontSize: 14,
     lineHeight: 21,
   },
+  checkoutCard: { alignItems: "flex-start", backgroundColor: colors.surface, borderColor: colors.borderSoft, borderRadius: radii.large, borderWidth: 1, flexDirection: "row", gap: spacing.md, marginBottom: spacing.md, padding: spacing.md },
+  stepNumber: { alignItems: "center", backgroundColor: "#18352D", borderRadius: 13, height: 38, justifyContent: "center", width: 38 },
+  stepNumberText: { color: colors.accent, fontSize: 15, fontWeight: "900" },
+  checkoutCopy: { flex: 1 },
   card: {
     backgroundColor: "#111",
     borderRadius: 12,
@@ -424,31 +360,31 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    color: "#0af",
+    color: colors.text,
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 8,
   },
   bodyText: {
-    color: "#ddd",
-    fontSize: 15,
-    lineHeight: 22,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
   },
   statusCard: {
-    backgroundColor: "#111822",
-    borderRadius: 10,
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radii.medium,
     padding: 14,
     marginBottom: 14,
   },
   statusText: {
-    color: "#cfe9ff",
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   confirmCard: {
-    backgroundColor: "#071722",
-    borderColor: "#0af",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.accent,
+    borderRadius: radii.large,
     borderWidth: 1,
     padding: 14,
     marginBottom: 14,
@@ -457,20 +393,20 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   confirmButtonPrimary: {
-    backgroundColor: "#0af",
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     paddingVertical: 11,
     alignItems: "center",
   },
   confirmButtonPrimaryText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 14,
     fontWeight: "800",
   },
   confirmButtonSecondary: {
-    backgroundColor: "#151515",
-    borderColor: "#2f4b5f",
-    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
     borderWidth: 1,
     paddingVertical: 11,
     alignItems: "center",
@@ -481,15 +417,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   primaryButton: {
-    backgroundColor: "#0af",
-    borderRadius: 10,
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
     paddingVertical: 14,
     alignItems: "center",
     marginBottom: 12,
   },
   walletButton: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
@@ -498,7 +439,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   walletButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
+    flex: 1,
     fontSize: 15,
     fontWeight: "800",
   },
@@ -520,7 +462,7 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   primaryButtonText: {
-    color: "#00131f",
+    color: colors.text,
     fontSize: 15,
     fontWeight: "800",
   },
@@ -539,15 +481,15 @@ const styles = StyleSheet.create({
   },
   feedbackButton: {
     flex: 1,
-    backgroundColor: "#151515",
-    borderColor: "#333",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
     borderWidth: 1,
     paddingVertical: 12,
     alignItems: "center",
   },
   feedbackButtonText: {
-    color: "#ddd",
+    color: colors.textSecondary,
     fontSize: 14,
     fontWeight: "700",
   },

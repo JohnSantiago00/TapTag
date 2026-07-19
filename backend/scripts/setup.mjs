@@ -22,6 +22,6 @@ if (fs.existsSync(envPath)) {
 }
 
 console.log('\nNext steps:');
-console.log('1. Fill in backend/.env with MONGODB_URI and FIREBASE_PROJECT_ID');
+console.log('1. Fill in backend/.env with MONGODB_URI, FIREBASE_PROJECT_ID, and GOOGLE_PLACES_API_KEY');
 console.log('2. Run npm run seed:knowledge --prefix backend');
 console.log('3. Run npm run api from the repo root');

@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { cards, validateCardCatalog } from '../catalog/cardCatalog.mjs';
 import { closeDb, ensureIndexes, getDb } from '../src/mongo.mjs';
 
 dotenv.config();
@@ -12,144 +13,6 @@ const ALLOWED_NORMALIZED_CATEGORIES = [
   'Entertainment',
   'Online Shopping',
   'Other',
-];
-
-const cards = [
-  {
-    id: 'amex_gold',
-    name: 'American Express Gold Card',
-    issuer: 'American Express',
-    network: 'Amex',
-    rewardRules: [
-      { category: 'Dining', rate: 4 },
-      { category: 'Groceries', rate: 4 },
-      { category: 'Travel', rate: 3 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 250,
-    issuerWebsite: 'https://www.americanexpress.com/us/credit-cards/card/gold-card/',
-  },
-  {
-    id: 'chase_sapphire_preferred',
-    name: 'Chase Sapphire Preferred',
-    issuer: 'Chase',
-    network: 'Visa',
-    rewardRules: [
-      { category: 'Travel', rate: 2 },
-      { category: 'Dining', rate: 3 },
-      { category: 'Online Shopping', rate: 1 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 95,
-    issuerWebsite: 'https://creditcards.chase.com/rewards-credit-cards/sapphire/preferred',
-  },
-  {
-    id: 'citi_custom_cash',
-    name: 'Citi Custom Cash Card',
-    issuer: 'Citi',
-    network: 'Mastercard',
-    rewardRules: [
-      { category: 'Top Monthly Spend Category', rate: 5 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://www.citi.com/credit-cards/citi-custom-cash-credit-card',
-  },
-  {
-    id: 'chase_freedom_flex',
-    name: 'Chase Freedom Flex',
-    issuer: 'Chase',
-    network: 'Mastercard',
-    rewardRules: [
-      { category: 'Dining', rate: 3 },
-      { category: 'Groceries', rate: 3 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://creditcards.chase.com/cash-back-credit-cards/freedom/flex',
-  },
-  {
-    id: 'capital_one_savor',
-    name: 'Capital One Savor Cash Rewards',
-    issuer: 'Capital One',
-    network: 'Mastercard',
-    rewardRules: [
-      { category: 'Dining', rate: 3 },
-      { category: 'Entertainment', rate: 3 },
-      { category: 'Groceries', rate: 3 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://www.capitalone.com/credit-cards/savor/',
-  },
-  {
-    id: 'wells_fargo_autograph',
-    name: 'Wells Fargo Autograph Card',
-    issuer: 'Wells Fargo',
-    network: 'Visa',
-    rewardRules: [
-      { category: 'Dining', rate: 3 },
-      { category: 'Travel', rate: 3 },
-      { category: 'Transportation', rate: 3 },
-      { category: 'Gas', rate: 3 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://creditcards.wellsfargo.com/autograph-visa-credit-card/',
-  },
-  {
-    id: 'blue_cash_preferred',
-    name: 'Blue Cash Preferred Card',
-    issuer: 'American Express',
-    network: 'Amex',
-    rewardRules: [
-      { category: 'Groceries', rate: 6 },
-      { category: 'Gas', rate: 3 },
-      { category: 'Transportation', rate: 3 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 95,
-    issuerWebsite: 'https://www.americanexpress.com/us/credit-cards/card/blue-cash-preferred/',
-  },
-  {
-    id: 'prime_visa',
-    name: 'Prime Visa',
-    issuer: 'Chase',
-    network: 'Visa',
-    rewardRules: [
-      { category: 'Online Shopping', rate: 5 },
-      { category: 'Dining', rate: 2 },
-      { category: 'Gas', rate: 2 },
-      { category: 'Other', rate: 1 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://www.amazon.com/Prime-Visa/dp/BT00LN946S',
-  },
-  {
-    id: 'chase_freedom_unlimited',
-    name: 'Chase Freedom Unlimited',
-    issuer: 'Chase',
-    network: 'Visa',
-    rewardRules: [
-      { category: 'Dining', rate: 3 },
-      { category: 'Travel', rate: 5 },
-      { category: 'Other', rate: 1.5 },
-    ],
-    annualFee: 0,
-    issuerWebsite: 'https://creditcards.chase.com/cash-back-credit-cards/freedom/unlimited',
-  },
-  {
-    id: 'capital_one_venture_x',
-    name: 'Capital One Venture X',
-    issuer: 'Capital One',
-    network: 'Visa',
-    rewardRules: [
-      { category: 'Travel', rate: 5 },
-      { category: 'Other', rate: 2 },
-    ],
-    annualFee: 395,
-    issuerWebsite: 'https://www.capitalone.com/credit-cards/venture-x/',
-  },
 ];
 
 const mccMap = [
@@ -246,6 +109,8 @@ function validateMccMap(mccMappingsToValidate) {
 }
 
 function auditKnowledgeLayer() {
+  const catalogErrors = validateCardCatalog(cards);
+  assert(!catalogErrors.length, `Card catalog validation failed:\n${catalogErrors.join('\n')}`);
   validateCards(cards);
   validateBrands(brands);
   validateMccMap(mccMap);

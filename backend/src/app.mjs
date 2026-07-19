@@ -19,7 +19,7 @@ const EVENT_SOURCES = new Set(['lab', 'nearby', 'wallet', 'profile']);
 const CARD_PRODUCT_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$/;
 const CUSTOM_CARD_NETWORKS = new Set(['Visa', 'Mastercard', 'Amex', 'Discover', 'Other']);
 
-function createRateLimiter({ windowMs, max }, logger) {
+function createRateLimiter({ windowMs, max, keyGenerator }, logger) {
   const hits = new Map();
   const sweep = setInterval(() => {
     const now = Date.now();
@@ -30,7 +30,7 @@ function createRateLimiter({ windowMs, max }, logger) {
   sweep.unref?.();
 
   return (req, res, next) => {
-    const key = req.ip || 'unknown';
+    const key = keyGenerator?.(req) || req.ip || 'unknown';
     const now = Date.now();
     let entry = hits.get(key);
 
@@ -58,9 +58,11 @@ function createRateLimiter({ windowMs, max }, logger) {
 export function createTapTagApp({
   getDb,
   requireFirebaseUser,
+  placesClient = null,
   allowedOrigins = ['*'],
   logger = console,
   rateLimit = { windowMs: 60_000, max: 300 },
+  placesRateLimit = { windowMs: 60_000, max: 10 },
   trustProxy = false,
 }) {
   const app = express();
@@ -328,6 +330,45 @@ export function createTapTagApp({
 
   app.use('/api/users/me', requireFirebaseUser);
 
+  const nearbyPlacesLimiter = placesRateLimit
+    ? createRateLimiter({
+        ...placesRateLimit,
+        keyGenerator: (req) => req.user?.uid ? `user:${req.user.uid}` : undefined,
+      }, logger)
+    : (_req, _res, next) => next();
+
+  app.post('/api/users/me/places/nearby', nearbyPlacesLimiter, async (req, res) => {
+    if (!placesClient) {
+      return res.status(503).json({
+        error: 'Nearby merchant discovery is not configured.',
+      });
+    }
+
+    const latitude = typeof req.body?.latitude === 'number' ? req.body.latitude : null;
+    const longitude = typeof req.body?.longitude === 'number' ? req.body.longitude : null;
+    if (
+      latitude === null || latitude < -90 || latitude > 90 ||
+      longitude === null || longitude < -180 || longitude > 180
+    ) {
+      return res.status(400).json({ error: 'Valid latitude and longitude are required.' });
+    }
+
+    const requestedRadius = typeof req.body?.radiusMeters === 'number'
+      ? req.body.radiusMeters
+      : 250;
+    const radiusMeters = Math.max(
+      50,
+      Math.min(Number.isFinite(requestedRadius) ? requestedRadius : 250, 1000)
+    );
+    const places = await placesClient.searchNearby({
+      latitude,
+      longitude,
+      radiusMeters,
+      maxResults: 12,
+    });
+    res.json({ places });
+  });
+
   app.get('/api/users/me/profile', async (req, res) => {
     const db = await getDb();
     const doc = await db.collection('users').findOne({ uid: req.user.uid });
@@ -561,7 +602,7 @@ export function createTapTagApp({
     // Body-parser and similar middleware attach a 4xx status to client errors
     // (malformed JSON, oversized payloads); everything else is a real 500.
     const status =
-      Number.isInteger(error?.status) && error.status >= 400 && error.status < 500
+      Number.isInteger(error?.status) && error.status >= 400 && error.status < 600
         ? error.status
         : 500;
 
@@ -570,7 +611,12 @@ export function createTapTagApp({
     }
 
     res.status(status).json({
-      error: status >= 500 ? 'Internal server error' : 'Invalid request',
+      error:
+        status === 502 || status === 503
+          ? 'Nearby merchant service is temporarily unavailable'
+          : status >= 500
+            ? 'Internal server error'
+            : 'Invalid request',
     });
   });
 

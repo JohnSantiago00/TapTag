@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { createTapTagApp } from './app.mjs';
 import { requireFirebaseUser } from './firebaseAuth.mjs';
+import { createGooglePlacesClient } from './googlePlaces.mjs';
 import { closeDb, ensureIndexes, getDb } from './mongo.mjs';
 
 dotenv.config();
@@ -40,6 +41,7 @@ await ensureIndexes();
 const app = createTapTagApp({
   getDb,
   requireFirebaseUser,
+  placesClient: createGooglePlacesClient({ apiKey: process.env.GOOGLE_PLACES_API_KEY }),
   allowedOrigins,
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000),

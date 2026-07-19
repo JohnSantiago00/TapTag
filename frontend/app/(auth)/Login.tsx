@@ -17,7 +17,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { auth } from "../../src/config/firebase";
+import { BrandMark } from "../../src/components/AppChrome";
 import { getCenteredScreenContentStyle } from "../../src/styles/layout";
+import { colors, radii, shadows, spacing } from "../../src/styles/theme";
 import { validateEmail, validatePassword } from "../../src/utils/validation";
 
 /*
@@ -111,77 +113,55 @@ export default function Login() {
           keyboardDismissMode="on-drag"
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.title}>Welcome Back</Text>
+          <View style={styles.brandWrap}><BrandMark /></View>
+          <Text style={styles.eyebrow}>Smart wallet intelligence</Text>
+          <Text style={styles.title}>Welcome back</Text>
           <Text style={styles.subtitle}>
-            Sign in to your privacy-first wallet intelligence workspace.
+            Sign in to get the best card for every purchase.
           </Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            placeholderTextColor="#aaa"
-            value={email}
-            // Keeping the inputs controlled makes validation/status behavior easy
-            // to reason about.
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            returnKeyType="done"
-            onSubmitEditing={Keyboard.dismiss}
-          />
-
-          <View style={styles.passwordRow}>
+          <View style={styles.formCard}>
+            <Text style={styles.label}>Email</Text>
             <TextInput
-              style={styles.passwordInput}
-              placeholder="Password"
-              placeholderTextColor="#aaa"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoComplete="password"
+              style={styles.input}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.textMuted}
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
               returnKeyType="done"
-              onSubmitEditing={() => {
-                Keyboard.dismiss();
-                handleLogin();
-              }}
+              onSubmitEditing={Keyboard.dismiss}
             />
-            <TouchableOpacity
-              style={styles.eyeButton}
-              onPress={() => setShowPassword((current) => !current)}
-              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-            >
-              <Ionicons
-                name={showPassword ? "eye-off-outline" : "eye-outline"}
-                size={20}
-                color="#aaa"
+            <View style={styles.passwordLabelRow}>
+              <Text style={styles.label}>Password</Text>
+              <TouchableOpacity onPress={handleForgotPassword} disabled={loading}><Text style={styles.forgotText}>Forgot password?</Text></TouchableOpacity>
+            </View>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Enter your password"
+                placeholderTextColor={colors.textMuted}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoComplete="password"
+                returnKeyType="done"
+                onSubmitEditing={() => { Keyboard.dismiss(); handleLogin(); }}
               />
+              <TouchableOpacity style={styles.eyeButton} onPress={() => setShowPassword((current) => !current)} accessibilityLabel={showPassword ? "Hide password" : "Show password"}>
+                <Ionicons name={showPassword ? "eye-off-outline" : "eye-outline"} size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            {status ? <View style={styles.statusCard}><Text style={styles.status}>{status}</Text></View> : null}
+            <TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} onPress={handleLogin} disabled={loading}>
+              {loading ? <ActivityIndicator color={colors.accentInk} /> : <><Text style={styles.buttonText}>Sign in</Text><Ionicons name="arrow-forward" size={18} color={colors.accentInk} /></>}
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={[styles.button, loading && { opacity: 0.6 }]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Login</Text>
-            )}
+          <TouchableOpacity style={styles.signupLink} onPress={() => router.push("/(auth)/SignUp")}>
+            <Text style={styles.signupCopy}>New to TapTag? <Text style={styles.signupAccent}>Create an account</Text></Text>
           </TouchableOpacity>
-
-          <TouchableOpacity onPress={handleForgotPassword} disabled={loading}>
-            <Text style={styles.switchText}>Forgot password?</Text>
-          </TouchableOpacity>
-
-          {status ? <Text style={styles.status}>{status}</Text> : null}
-
-          <TouchableOpacity onPress={() => router.push("/(auth)/SignUp")}>
-            <Text style={styles.switchText}>
-              Don&apos;t have an account? Sign Up
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.privacyRow}><Ionicons name="shield-checkmark-outline" size={16} color={colors.accent} /><Text style={styles.privacyText}>Payment credentials never touch TapTag.</Text></View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -191,54 +171,38 @@ export default function Login() {
 const styles = StyleSheet.create({
   flex: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
+  brandWrap: { alignSelf: "flex-start", marginBottom: spacing.xxl },
+  eyebrow: { alignSelf: "flex-start", color: colors.accent, fontSize: 12, fontWeight: "800", letterSpacing: 1.1, marginBottom: spacing.sm, textTransform: "uppercase" },
   title: {
-    fontSize: 28,
-    color: "#fff",
-    fontWeight: "700",
-    marginBottom: 10,
+    alignSelf: "flex-start", color: colors.text, fontSize: 34, fontWeight: "900", letterSpacing: -1.2, marginBottom: spacing.sm,
   },
   subtitle: {
-    color: "#aaa",
-    fontSize: 15,
-    lineHeight: 21,
-    textAlign: "center",
-    marginBottom: 24,
+    alignSelf: "flex-start", color: colors.textSecondary, fontSize: 15, lineHeight: 22, marginBottom: spacing.xl, textAlign: "left",
   },
+  formCard: { backgroundColor: colors.surface, borderColor: colors.borderSoft, borderRadius: radii.xlarge, borderWidth: 1, padding: spacing.lg, width: "100%", ...shadows.soft },
+  label: { color: colors.textSecondary, fontSize: 13, fontWeight: "700", marginBottom: 7 },
   input: {
-    width: "100%",
-    backgroundColor: "#1a1a1a",
-    color: "#fff",
-    marginBottom: 12,
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.surfaceSoft, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, color: colors.text, fontSize: 15, marginBottom: spacing.md, minHeight: 52, paddingHorizontal: spacing.md, width: "100%",
   },
+  passwordLabelRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  forgotText: { color: colors.accent, fontSize: 12, fontWeight: "800", marginBottom: 7 },
   passwordRow: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#1a1a1a",
-    borderRadius: 8,
-    marginBottom: 12,
+    alignItems: "center", backgroundColor: colors.surfaceSoft, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, flexDirection: "row", marginBottom: spacing.md, width: "100%",
   },
-  passwordInput: {
-    flex: 1,
-    color: "#fff",
-    padding: 12,
-  },
-  eyeButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-  },
+  passwordInput: { color: colors.text, flex: 1, fontSize: 15, minHeight: 52, paddingHorizontal: spacing.md },
+  eyeButton: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  statusCard: { backgroundColor: colors.surfaceRaised, borderRadius: radii.small, marginBottom: spacing.md, padding: spacing.sm },
+  status: { color: colors.textSecondary, fontSize: 13, lineHeight: 18, textAlign: "center" },
   button: {
-    backgroundColor: "#0af",
-    paddingVertical: 12,
-    paddingHorizontal: 50,
-    borderRadius: 8,
-    marginTop: 10,
+    alignItems: "center", backgroundColor: colors.accent, borderRadius: radii.medium, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: 52, marginTop: spacing.xs,
   },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  switchText: { color: "#0af", marginTop: 15 },
-  status: { color: "#fff", marginTop: 15, textAlign: "center" },
+  buttonDisabled: { opacity: 0.55 },
+  buttonText: { color: colors.accentInk, fontSize: 15, fontWeight: "900" },
+  signupLink: { marginTop: spacing.lg, padding: spacing.sm },
+  signupCopy: { color: colors.textSecondary, fontSize: 14 },
+  signupAccent: { color: colors.accent, fontWeight: "800" },
+  privacyRow: { alignItems: "center", flexDirection: "row", gap: 7, marginTop: spacing.lg },
+  privacyText: { color: colors.textMuted, fontSize: 12 },
 });

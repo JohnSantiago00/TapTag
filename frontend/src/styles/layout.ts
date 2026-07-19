@@ -1,12 +1,12 @@
 import { ViewStyle } from "react-native";
 import { EdgeInsets } from "react-native-safe-area-context";
 
-export const TAB_BAR_BASE_HEIGHT = 64;
+export const TAB_BAR_BASE_HEIGHT = 62;
 
 const MIN_BOTTOM_INSET = 8;
-const TAB_SCREEN_BOTTOM_GAP = 16;
+const TAB_SCREEN_BOTTOM_GAP = 24;
 const STACK_SCREEN_BOTTOM_GAP = 24;
-const MAX_CONTENT_WIDTH = 680;
+const MAX_CONTENT_WIDTH = 760;
 
 export function getPageGutter(width: number) {
   if (width <= 360) return 14;
@@ -41,7 +41,7 @@ export function getTabScrollContentStyle(
   return {
     ...getConstrainedContentStyle(width),
     paddingHorizontal: getPageGutter(width),
-    paddingTop: width <= 360 ? 12 : 16,
+    paddingTop: width <= 360 ? 16 : 22,
     paddingBottom: getTabBarBottomPadding(insets.bottom) + TAB_SCREEN_BOTTOM_GAP,
   };
 }

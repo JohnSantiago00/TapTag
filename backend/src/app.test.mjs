@@ -131,6 +131,18 @@ describe('TapTag API app', () => {
 
     const app = createTapTagApp({
       getDb: async () => db,
+      placesClient: {
+        async searchNearby(input) {
+          return [{
+            id: 'google_place_1',
+            name: 'Corner Cafe',
+            latitude: input.latitude + 0.0001,
+            longitude: input.longitude,
+            normalizedCategory: 'Dining',
+            provider: 'google_places',
+          }];
+        },
+      },
       allowedOrigins: ['*'],
       requireFirebaseUser: (req, res, next) => {
         if (req.get('authorization') !== 'Bearer test-token') {
@@ -170,6 +182,44 @@ describe('TapTag API app', () => {
   it('requires auth for user routes', async () => {
     const profile = await request(baseUrl, '/api/users/me/profile');
     assert.equal(profile.response.status, 401);
+  });
+
+  it('returns live nearby merchants without persisting coordinates', async () => {
+    const nearby = await request(baseUrl, '/api/users/me/places/nearby', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: 40.7, longitude: -74, radiusMeters: 300 }),
+    });
+
+    assert.equal(nearby.response.status, 200);
+    assert.equal(nearby.body.places[0].name, 'Corner Cafe');
+    assert.equal(nearby.body.places[0].normalizedCategory, 'Dining');
+    assert.equal(db.collections.has('places'), false);
+  });
+
+  it('rejects invalid nearby coordinates', async () => {
+    const nearby = await request(baseUrl, '/api/users/me/places/nearby', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: 999, longitude: -74 }),
+    });
+    assert.equal(nearby.response.status, 400);
+
+    const stringCoordinates = await request(baseUrl, '/api/users/me/places/nearby', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer test-token',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ latitude: '40.7', longitude: '-74' }),
+    });
+    assert.equal(stringCoordinates.response.status, 400);
   });
 
   it('creates sanitized profiles with privacy defaults', async () => {
@@ -615,5 +665,36 @@ describe('TapTag API resilience', () => {
       assert.deepEqual(third.body, { error: 'Too many requests' });
       assert.ok(Number(third.response.headers.get('retry-after')) >= 1);
     });
+  });
+
+  it('separately limits billable nearby place lookups', async () => {
+    let providerCalls = 0;
+    await withApp(
+      {
+        placesRateLimit: { windowMs: 60_000, max: 2 },
+        placesClient: {
+          async searchNearby() {
+            providerCalls += 1;
+            return [];
+          },
+        },
+        requireFirebaseUser: (req, _res, next) => {
+          req.user = { uid: 'rate_limited_user' };
+          next();
+        },
+      },
+      async (baseUrl) => {
+        const options = {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ latitude: 40.7, longitude: -74 }),
+        };
+        assert.equal((await request(baseUrl, '/api/users/me/places/nearby', options)).response.status, 200);
+        assert.equal((await request(baseUrl, '/api/users/me/places/nearby', options)).response.status, 200);
+        const limited = await request(baseUrl, '/api/users/me/places/nearby', options);
+        assert.equal(limited.response.status, 429);
+        assert.equal(providerCalls, 2);
+      }
+    );
   });
 });

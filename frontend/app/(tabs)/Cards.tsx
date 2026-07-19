@@ -22,7 +22,11 @@ import {
   dismissKeyboard,
 } from "../../src/components/KeyboardDoneBar";
 import { useAuth } from "../../src/context/AuthContext";
-import { getAllCards, KnowledgeCard } from "../../src/services/data/cards";
+import {
+  getAllCards,
+  KnowledgeCard,
+  KnowledgeCardEarningRule,
+} from "../../src/services/data/cards";
 import { trackUserEvent } from "../../src/services/data/events";
 import {
   addWalletCard,
@@ -31,6 +35,12 @@ import {
   WalletCardRef,
 } from "../../src/services/data/wallet";
 import { getTabScrollContentStyle } from "../../src/styles/layout";
+import {
+  IconButton as AppIconButton,
+  ScreenHeader,
+  SectionHeading,
+} from "../../src/components/AppChrome";
+import { colors, radii, shadows, spacing } from "../../src/styles/theme";
 
 const CARD_COLORS = ["#00AAFF", "#7C5CFF", "#13C27A", "#FFB020", "#FF5A5F"];
 
@@ -68,6 +78,7 @@ export default function Cards() {
   const [refreshing, setRefreshing] = useState(false);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [expandedCatalogCardId, setExpandedCatalogCardId] = useState<string | null>(null);
   const [walletDrafts, setWalletDrafts] = useState<Record<string, WalletDraft>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -253,21 +264,12 @@ export default function Cards() {
 
   const listHeader = (
     <View>
-      <View style={styles.headerRow}>
-        <View style={styles.headerCopy}>
-          <Text style={styles.title}>Wallet</Text>
-          <Text style={styles.subtitle}>
-            Card metadata only. No full numbers, CVV, expiration, or billing data.
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.headerAddButton}
-          onPress={() => router.push("/add-card" as never)}
-          accessibilityLabel="Add custom card"
-        >
-          <Ionicons name="add" size={22} color="#00131f" />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        eyebrow="Smart wallet"
+        title="Your cards"
+        subtitle="See exactly where each card wins, without storing payment credentials."
+        right={<AppIconButton icon="add" onPress={() => router.push("/add-card" as never)} accessibilityLabel="Add a card" />}
+      />
 
       {selectedCards.length ? (
         <ScrollView
@@ -306,24 +308,29 @@ export default function Cards() {
                   </Text>
                 </View>
                 <Text style={styles.walletTileLast4}>
-                  {draft.last4 ? `•••• ${draft.last4}` : "Tap to edit"}
+                  {draft.last4 ? `•••• ${draft.last4}` : "View details"}
                 </Text>
+                <View style={styles.walletTileRewardPill}>
+                  <Text style={styles.walletTileRewardText}>
+                    {getRewardHeadline(card)}
+                  </Text>
+                </View>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
       ) : (
         <View style={styles.emptyWalletCard}>
-          <Text style={styles.emptyTitle}>Add your first card</Text>
+          <Text style={styles.emptyTitle}>Your wallet starts here</Text>
           <Text style={styles.emptyText}>
-            Recommendations start once TapTag knows the cards in your wallet.
+            Add the cards you already carry to unlock personalized recommendations.
           </Text>
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={() => router.push("/add-card" as never)}
           >
             <Ionicons name="add-circle-outline" size={18} color="#00131f" />
-            <Text style={styles.primaryButtonText}>Add Card</Text>
+            <Text style={styles.primaryButtonText}>Add a card</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -336,16 +343,14 @@ export default function Cards() {
           onPress={() => router.push("/add-card" as never)}
         >
           <Ionicons name="create-outline" size={18} color="#00131f" />
-          <Text style={styles.primaryButtonText}>Add your own</Text>
+          <Text style={styles.primaryButtonText}>Add a card manually</Text>
         </TouchableOpacity>
       </View>
 
+      <SectionHeading title="Browse cards" />
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Card catalog</Text>
-        <Text style={styles.infoText}>
-          Add known card products here, or create a custom card for products not
-          listed yet.
-        </Text>
+        <Ionicons name="shield-checkmark-outline" size={18} color={colors.accent} />
+        <Text style={styles.infoText}>Choose a card you own. TapTag stores the product—not its payment credentials.</Text>
       </View>
 
       {loading ? <ActivityIndicator color="#0af" style={styles.loader} /> : null}
@@ -398,6 +403,17 @@ export default function Cards() {
             <Ionicons name="close" size={20} color="#aaa" />
           </TouchableOpacity>
         </View>
+
+        {renderRewardsOverview(card)}
+
+        <View style={styles.walletDetailsDivider} />
+        <View style={styles.sectionHeadingRow}>
+          <Ionicons name="wallet-outline" size={18} color="#8ecfff" />
+          <Text style={styles.sectionHeading}>Your wallet details</Text>
+        </View>
+        <Text style={styles.sectionHelper}>
+          Optional labels stored for this card reference only.
+        </Text>
 
         <Text style={styles.detailsLabel}>Card Nickname</Text>
         <TextInput
@@ -469,6 +485,73 @@ export default function Cards() {
     );
   }
 
+  function renderRewardsOverview(card: KnowledgeCard, compact = false) {
+    const safeRules = card.rewardRules.filter((rule) => rule.category !== "Other");
+    const baseRule = card.rewardRules.find((rule) => rule.category === "Other");
+    const detailedRules = card.earningRules ?? [];
+
+    return (
+      <View style={compact ? styles.compactRewardsOverview : undefined}>
+        <View style={styles.rewardStatsRow}>
+          <View style={styles.rewardStatCard}>
+            <Text style={styles.rewardStatLabel}>Best everyday</Text>
+            <Text style={styles.rewardStatValue}>{getBestRateLabel(card)}</Text>
+          </View>
+          <View style={styles.rewardStatCard}>
+            <Text style={styles.rewardStatLabel}>Annual fee</Text>
+            <Text style={styles.rewardStatValue}>{formatAnnualFee(card.annualFee)}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.rewardSectionLabel}>Reliable at checkout</Text>
+        <View style={styles.rewardChipRow}>
+          {safeRules.map((rule) => (
+            <View key={`${card.id}-${rule.category}`} style={styles.rewardChip}>
+              <Text style={styles.rewardChipRate}>{formatLegacyRate(card, rule.rate)}</Text>
+              <Text style={styles.rewardChipCategory}>{rule.category}</Text>
+            </View>
+          ))}
+          {baseRule ? (
+            <View style={[styles.rewardChip, styles.rewardChipMuted]}>
+              <Text style={styles.rewardChipRate}>{formatLegacyRate(card, baseRule.rate)}</Text>
+              <Text style={styles.rewardChipCategory}>Everything else</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {detailedRules.length ? (
+          <>
+            <Text style={styles.rewardSectionLabel}>All earning rules</Text>
+            <View style={styles.earningRuleList}>
+              {detailedRules.map((rule) => (
+                <View key={rule.id} style={styles.earningRuleRow}>
+                  <View style={styles.earningRateBadge}>
+                    <Text style={styles.earningRateText}>{formatRuleRate(rule)}</Text>
+                  </View>
+                  <View style={styles.earningRuleCopy}>
+                    <Text style={styles.earningRuleTitle}>{friendlyRuleTitle(rule)}</Text>
+                    <Text style={styles.earningRuleDetail}>{formatRuleDetails(rule)}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        {card.requirements?.map((requirement) => (
+          <View key={requirement} style={styles.requirementCard}>
+            <Ionicons name="information-circle-outline" size={18} color="#ffc766" />
+            <Text style={styles.requirementText}>{requirement}</Text>
+          </View>
+        ))}
+
+        {card.reviewedAt ? (
+          <Text style={styles.reviewedText}>Catalog verified {formatCatalogDate(card.reviewedAt)}</Text>
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <FlatList
@@ -487,6 +570,7 @@ export default function Cards() {
         }
         renderItem={({ item }) => {
           const isSelected = selectedIds.has(item.id);
+          const isExpanded = expandedCatalogCardId === item.id;
           const walletRef = walletById.get(item.id);
           const draft = walletDrafts[item.id] ?? {
             nickname: walletRef?.nickname ?? "",
@@ -495,42 +579,65 @@ export default function Cards() {
           };
 
           return (
-            <View style={styles.catalogRow}>
-              <View style={[styles.catalogCardPreview, { backgroundColor: draft.color }]}>
-                <Text style={styles.catalogPreviewNetwork}>{networkGlyph(item.network)}</Text>
-                <Text style={styles.catalogPreviewLast4}>
-                  {draft.last4 ? `••${draft.last4}` : "••••"}
-                </Text>
-              </View>
-              <View style={styles.catalogCopy}>
-                <Text style={styles.catalogTitle} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <Text style={styles.catalogMeta} numberOfLines={1}>
-                  {item.issuer} • {item.network}
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.catalogActionButton,
-                  isSelected && styles.catalogActionButtonSelected,
-                ]}
-                onPress={() =>
-                  isSelected
-                    ? setEditingCardId(item.id)
-                    : handleToggleWalletCard(item.id, false)
-                }
-                disabled={savingCardId === item.id}
-              >
-                <Text
-                  style={[
-                    styles.catalogActionText,
-                    isSelected && styles.catalogActionTextSelected,
-                  ]}
+            <View style={[styles.catalogRow, isExpanded && styles.catalogRowExpanded]}>
+              <View style={styles.catalogMainRow}>
+                <View style={[styles.catalogCardPreview, { backgroundColor: draft.color }]}>
+                  <Text style={styles.catalogPreviewNetwork}>{networkGlyph(item.network)}</Text>
+                  <Text style={styles.catalogPreviewLast4}>
+                    {draft.last4 ? `••${draft.last4}` : "••••"}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.catalogCopy}
+                  onPress={() =>
+                    setExpandedCatalogCardId((current) => current === item.id ? null : item.id)
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`${isExpanded ? "Hide" : "Show"} details for ${item.name}`}
                 >
-                  {savingCardId === item.id ? "Saving" : isSelected ? "Edit" : "Add"}
-                </Text>
-              </TouchableOpacity>
+                  <Text style={styles.catalogTitle} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.catalogMeta} numberOfLines={1}>
+                    {getCatalogSummary(item)}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.catalogExpandButton}
+                  onPress={() =>
+                    setExpandedCatalogCardId((current) => current === item.id ? null : item.id)
+                  }
+                  accessibilityLabel={`${isExpanded ? "Collapse" : "Expand"} card details`}
+                >
+                  <Ionicons
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color="#8ecfff"
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.catalogActionButton,
+                    isSelected && styles.catalogActionButtonSelected,
+                  ]}
+                  onPress={() =>
+                    isSelected
+                      ? setEditingCardId(item.id)
+                      : handleToggleWalletCard(item.id, false)
+                  }
+                  disabled={savingCardId === item.id}
+                >
+                  <Text
+                    style={[
+                      styles.catalogActionText,
+                      isSelected && styles.catalogActionTextSelected,
+                    ]}
+                  >
+                    {savingCardId === item.id ? "Saving" : isSelected ? "Open" : "Add"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {isExpanded ? renderRewardsOverview(item, true) : null}
             </View>
           );
         }}
@@ -562,10 +669,87 @@ function networkGlyph(network: string) {
   return "CARD";
 }
 
+function formatAnnualFee(annualFee?: number | null) {
+  if (!annualFee) return "$0";
+  return `$${annualFee}`;
+}
+
+function formatLegacyRate(card: KnowledgeCard, rate: number) {
+  return card.rewardCurrency?.type === "cashback" ? `${rate}%` : `${rate}x`;
+}
+
+function getBestRateLabel(card: KnowledgeCard) {
+  const eligibleRules = card.rewardRules.filter((rule) => rule.category !== "Other");
+  const rules = eligibleRules.length ? eligibleRules : card.rewardRules;
+  const bestRate = Math.max(...rules.map((rule) => rule.rate), 0);
+  return bestRate ? formatLegacyRate(card, bestRate) : "—";
+}
+
+function getRewardHeadline(card: KnowledgeCard) {
+  const bestRules = card.rewardRules
+    .filter((rule) => rule.category !== "Other")
+    .sort((left, right) => right.rate - left.rate);
+
+  if (!bestRules.length) {
+    const baseRule = card.rewardRules.find((rule) => rule.category === "Other");
+    return baseRule ? `${formatLegacyRate(card, baseRule.rate)} everywhere` : "View rewards";
+  }
+
+  return `${formatLegacyRate(card, bestRules[0].rate)} ${bestRules[0].category}`;
+}
+
+function getCatalogSummary(card: KnowledgeCard) {
+  return `${card.issuer} • ${formatAnnualFee(card.annualFee)} fee • ${getRewardHeadline(card)}`;
+}
+
+function formatRuleRate(rule: KnowledgeCardEarningRule) {
+  return rule.unit === "percent" ? `${rule.rate}%` : `${rule.rate}x`;
+}
+
+function friendlyRuleTitle(rule: KnowledgeCardEarningRule) {
+  if (rule.selector === "highest_spend_eligible_category") return "Top eligible category";
+  if (rule.selector === "cardholder_selected_category") return "Your selected category";
+  if (rule.category === "Other") return "Everything else";
+  return rule.category;
+}
+
+function formatRuleDetails(rule: KnowledgeCardEarningRule) {
+  const details: string[] = [];
+
+  if (rule.subcategories?.length) details.push(capitalize(rule.subcategories.join(", ")));
+  if (rule.merchants?.length) details.push(`At ${rule.merchants.join(", ")}`);
+  if (rule.channels?.length) details.push(`Book through ${rule.channels.join(" or ")}`);
+  if (rule.geography) details.push(rule.geography === "US" ? "U.S. purchases" : rule.geography);
+  if (rule.selector === "highest_spend_eligible_category") details.push("Automatically follows your highest eligible spend each billing cycle");
+  if (rule.selector === "cardholder_selected_category") details.push("Category choice required");
+  if (rule.requiresActivation) details.push("Activation required");
+  if (rule.validThrough) details.push(`Through ${formatCatalogDate(rule.validThrough)}`);
+  if (rule.cap) {
+    const capPeriod = rule.cap.period.replaceAll("_", " ");
+    details.push(`Up to $${rule.cap.amount.toLocaleString()} per ${capPeriod}`);
+  }
+  if (rule.afterCapRate) details.push(`Then ${rule.unit === "percent" ? `${rule.afterCapRate}%` : `${rule.afterCapRate}x`}`);
+  if (rule.details) details.push(rule.details);
+  if (rule.exclusions?.length) details.push(`Excludes ${rule.exclusions.join(", ")}`);
+
+  return details.length ? details.join(" · ") : "No category cap listed";
+}
+
+function formatCatalogDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  if (!year || !month || !day) return value;
+  return `${monthNames[month - 1]} ${day}, ${year}`;
+}
+
+function capitalize(value: string) {
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
   headerRow: {
     alignItems: "center",
@@ -600,11 +784,12 @@ const styles = StyleSheet.create({
     paddingBottom: 14,
   },
   walletTile: {
-    borderRadius: 16,
+    borderRadius: radii.large,
     height: 178,
     justifyContent: "space-between",
     padding: 16,
     width: 282,
+    ...shadows.soft,
   },
   walletTileTopRow: {
     alignItems: "center",
@@ -634,10 +819,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "800",
   },
+  walletTileRewardPill: {
+    alignSelf: "flex-start",
+    backgroundColor: "rgba(0, 19, 31, 0.12)",
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  walletTileRewardText: {
+    color: "#00131f",
+    fontSize: 12,
+    fontWeight: "900",
+  },
   emptyWalletCard: {
-    backgroundColor: "#111822",
-    borderColor: "#26384a",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.large,
     borderWidth: 1,
     marginBottom: 14,
     padding: 16,
@@ -660,8 +857,8 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 10,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     flexDirection: "row",
     gap: 8,
     justifyContent: "center",
@@ -669,13 +866,16 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   primaryButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 14,
     fontWeight: "800",
   },
   infoCard: {
-    backgroundColor: "#111",
-    borderRadius: 10,
+    alignItems: "flex-start",
+    backgroundColor: colors.surfaceSoft,
+    borderRadius: radii.medium,
+    flexDirection: "row",
+    gap: spacing.sm,
     marginBottom: 12,
     padding: 14,
   },
@@ -686,7 +886,8 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   infoText: {
-    color: "#ddd",
+    color: colors.textSecondary,
+    flex: 1,
     fontSize: 14,
     lineHeight: 20,
   },
@@ -724,9 +925,9 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   detailsPanel: {
-    backgroundColor: "#101010",
-    borderColor: "#242424",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radii.large,
     borderWidth: 1,
     marginBottom: 14,
     padding: 14,
@@ -763,15 +964,164 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     textTransform: "uppercase",
   },
+  rewardStatsRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 16,
+  },
+  rewardStatCard: {
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    padding: 12,
+  },
+  rewardStatLabel: {
+    color: "#8196a5",
+    fontSize: 11,
+    fontWeight: "700",
+    marginBottom: 5,
+    textTransform: "uppercase",
+  },
+  rewardStatValue: {
+    color: "#fff",
+    fontSize: 21,
+    fontWeight: "900",
+  },
+  rewardSectionLabel: {
+    color: "#c7d7e3",
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 9,
+  },
+  rewardChipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 18,
+  },
+  rewardChip: {
+    alignItems: "center",
+    backgroundColor: "#092235",
+    borderColor: "#164b6d",
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  rewardChipMuted: {
+    backgroundColor: "#171717",
+    borderColor: "#333",
+  },
+  rewardChipRate: {
+    color: "#45bfff",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+  rewardChipCategory: {
+    color: "#e6f4ff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  earningRuleList: {
+    gap: 8,
+    marginBottom: 14,
+  },
+  earningRuleRow: {
+    alignItems: "flex-start",
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.borderSoft,
+    borderRadius: 10,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    padding: 10,
+  },
+  earningRateBadge: {
+    alignItems: "center",
+    backgroundColor: colors.accent,
+    borderRadius: 8,
+    justifyContent: "center",
+    minHeight: 38,
+    minWidth: 46,
+    paddingHorizontal: 7,
+  },
+  earningRateText: {
+    color: colors.accentInk,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  earningRuleCopy: {
+    flex: 1,
+  },
+  earningRuleTitle: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 3,
+  },
+  earningRuleDetail: {
+    color: "#929292",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  requirementCard: {
+    alignItems: "flex-start",
+    backgroundColor: "#201a0c",
+    borderColor: "#574619",
+    borderRadius: 9,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+    padding: 10,
+  },
+  requirementText: {
+    color: "#f4dca7",
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  reviewedText: {
+    color: "#666",
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  walletDetailsDivider: {
+    backgroundColor: "#262626",
+    height: 1,
+    marginBottom: 16,
+    marginTop: 14,
+  },
+  sectionHeadingRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 7,
+    marginBottom: 5,
+  },
+  sectionHeading: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  sectionHelper: {
+    color: "#777",
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 14,
+  },
   detailsLabelRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
   },
   detailsInput: {
-    backgroundColor: "#080808",
-    borderColor: "#2a2a2a",
-    borderRadius: 8,
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
     borderWidth: 1,
     color: "#fff",
     fontSize: 15,
@@ -800,13 +1150,13 @@ const styles = StyleSheet.create({
   },
   saveDetailsButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.small,
     flex: 1,
     paddingVertical: 11,
   },
   saveDetailsText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 14,
     fontWeight: "800",
   },
@@ -825,13 +1175,22 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
   catalogRow: {
-    alignItems: "center",
-    backgroundColor: "#111",
-    borderRadius: 10,
-    flexDirection: "row",
-    gap: 12,
+    alignItems: "stretch",
+    backgroundColor: colors.surface,
+    borderColor: colors.borderSoft,
+    borderRadius: radii.large,
+    borderWidth: 1,
     marginBottom: 10,
     padding: 12,
+  },
+  catalogRowExpanded: {
+    borderColor: "#21445d",
+    borderWidth: 1,
+  },
+  catalogMainRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 10,
   },
   catalogCardPreview: {
     borderRadius: 8,
@@ -863,10 +1222,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 3,
   },
+  catalogExpandButton: {
+    alignItems: "center",
+    height: 36,
+    justifyContent: "center",
+    width: 28,
+  },
+  compactRewardsOverview: {
+    borderTopColor: "#252525",
+    borderTopWidth: 1,
+    marginTop: 12,
+    paddingTop: 12,
+  },
   catalogActionButton: {
     alignItems: "center",
-    backgroundColor: "#0af",
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.small,
     minWidth: 58,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -877,7 +1248,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   catalogActionText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 13,
     fontWeight: "800",
   },

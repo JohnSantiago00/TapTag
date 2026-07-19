@@ -9,7 +9,7 @@ Non-goals:
 - payments
 - card credential storage
 - bank integrations
-- production-scale merchant discovery
+- payment-network-grade MCC certainty
 
 ## Repo Structure
 
@@ -50,9 +50,9 @@ Main screens:
 
 - Home - product orientation
 - Wallet - selected card-product refs
-- Lab - deterministic merchant recommendation testing
-- Nearby - foreground location recommendation nudges
-- Profile - profile state and event QA
+- Merchant Finder - search the curated merchant directory
+- Nearby - live Google Places discovery and foreground recommendations
+- Profile - account, privacy, notification, and recent-activity controls
 
 ## Backend Flow
 
@@ -61,6 +61,7 @@ Important files:
 - `backend/src/server.mjs`
 - `backend/src/mongo.mjs`
 - `backend/src/firebaseAuth.mjs`
+- `backend/catalog/cardCatalog.mjs`
 - `backend/seed/seedKnowledgeLayer.mjs`
 - `backend/seed/cleanupKnowledgeLayer.mjs`
 
@@ -69,7 +70,8 @@ The backend:
 - exposes public knowledge endpoints for cards, brands, and MCC mappings
 - verifies Firebase ID tokens for user profile, wallet, and event routes
 - stores MongoDB credentials server-side only
-- seeds the small beta knowledge layer into MongoDB
+- keeps the Google Places key server-side and proxies authenticated nearby lookups
+- seeds the reviewed 20-card catalog and beta merchant/MCC knowledge into MongoDB
 
 ## Recommendation Logic
 
@@ -96,7 +98,12 @@ File:
 
 - `frontend/app/(tabs)/Nearby.tsx`
 
-Nearby asks for foreground location permission, finds the nearest seeded merchant location, resolves the normalized category, runs the recommendation engine, and tracks nudge interactions.
+Nearby asks for foreground location permission and sends the current coordinate to
+the authenticated backend route only for that lookup. The backend queries Google
+Places, returns up to 12 nearby merchants, and does not persist the coordinate or
+Places response. The app maps provider place types to conservative TapTag reward
+categories, lets the user disambiguate the merchant, and runs the recommendation
+engine against the user's enabled wallet cards.
 
 It is not background geofencing.
 

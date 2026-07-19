@@ -8,6 +8,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import "../src/config/firebase";
 import { useAuthRedirect } from "../hooks/useAuthRedirect";
 import { AuthProvider, useAuth } from "../src/context/AuthContext";
+import { BrandMark } from "../src/components/AppChrome";
+import { colors, spacing } from "../src/styles/theme";
 import {
   buildPaymentPromptHref,
   configurePaymentPromptNotifications,
@@ -89,8 +91,9 @@ function RootNavigator() {
       <View style={styles.loadingContainer}>
         {/* This spinner is not just cosmetic, it prevents route flicker while
             Firebase restores persisted auth state from AsyncStorage. */}
-        <ActivityIndicator color="#0af" />
-        <StatusBar style="auto" />
+        <BrandMark />
+        <ActivityIndicator color={colors.accent} style={styles.loadingIndicator} />
+        <StatusBar style="light" />
       </View>
     );
   }
@@ -98,7 +101,7 @@ function RootNavigator() {
   return (
     <>
       <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </>
   );
 }
@@ -118,8 +121,9 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
     justifyContent: "center",
     alignItems: "center",
   },
+  loadingIndicator: { marginTop: spacing.lg },
 });

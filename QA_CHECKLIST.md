@@ -43,11 +43,13 @@
 ## Nearby
 
 - Open Nearby and allow foreground location permission.
-- Confirm the screen shows useful status when no seeded merchant is nearby.
+- Confirm real nearby merchants load and `Google Maps` attribution is visible.
+- In a dense location, choose a different merchant and confirm the recommendation updates.
+- Confirm reopening or refreshing triggers a lookup, but leaving the screen does not keep a location watcher running.
 - Test Refresh Nearby Check after changing wallet state.
 - Deny location permission on a fresh install or OS settings reset and confirm the screen explains the blocked state.
 - Confirm Open and Dismiss both work when a nudge appears.
-- When a nudge appears, tap Show Card and confirm it opens the pay prompt.
+- When a recommendation appears, tap Use this card and confirm it opens the pay prompt.
 - Confirm the automatic nearby notification opens the pay prompt when tapped.
 - Confirm the Nearby recommendation updates the companion pass preview.
 

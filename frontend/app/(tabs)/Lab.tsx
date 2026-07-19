@@ -1,3 +1,5 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -5,49 +7,27 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { IconButton, ScreenHeader } from "../../src/components/AppChrome";
 import { useAuth } from "../../src/context/AuthContext";
 import { getAllBrands, Brand } from "../../src/services/data/brands";
 import { getAllCards, KnowledgeCard } from "../../src/services/data/cards";
 import { updateCompanionPassRecommendation } from "../../src/services/data/companionPass";
-import {
-  getAllMccMappings,
-  MccMapping,
-} from "../../src/services/data/mccMap";
+import { getAllMccMappings, MccMapping } from "../../src/services/data/mccMap";
 import { trackUserEvent } from "../../src/services/data/events";
 import { getUserWallet, WalletCardRef } from "../../src/services/data/wallet";
-import {
-  buildPaymentPromptHref,
-  PaymentPromptInput,
-  schedulePaymentPromptNotification,
-} from "../../src/services/paymentPrompt";
+import { buildPaymentPromptHref, PaymentPromptInput } from "../../src/services/paymentPrompt";
 import { getPaymentLearningSignals } from "../../src/services/paymentLearning";
-import {
-  recommendBestCardForCategory,
-  type PaymentLearningSignals,
-} from "../../src/utils/recommendCard";
+import { recommendBestCardForCategory, type PaymentLearningSignals } from "../../src/utils/recommendCard";
 import { getTabScrollContentStyle } from "../../src/styles/layout";
+import { colors, radii, shadows, spacing } from "../../src/styles/theme";
 
-/*
-  File role:
-  Lab is the deterministic version of the TapTag loop.
-
-  Mental model:
-  pick a brand -> resolve MCC -> resolve normalizedCategory -> compare against
-  selected wallet cards -> explain the best match.
-
-  This screen is intentionally half product surface, half debugging surface.
-*/
-
-// Lab is the controlled recommendation workbench. It lets a tester choose a
-// seeded merchant and inspect the recommendation logic without needing real
-// location context.
-export default function Lab() {
+export default function CardFinder() {
   const router = useRouter();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -56,137 +36,64 @@ export default function Lab() {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [mccMappings, setMccMappings] = useState<MccMapping[]>([]);
   const [wallet, setWallet] = useState<WalletCardRef[]>([]);
-  const [learningSignals, setLearningSignals] =
-    useState<PaymentLearningSignals | null>(null);
+  const [learningSignals, setLearningSignals] = useState<PaymentLearningSignals | null>(null);
   const [selectedBrandId, setSelectedBrandId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // The raw knowledge-layer dump is a debugging surface, so it stays collapsed
-  // unless someone explicitly asks for it.
-  const [showKnowledgeData, setShowKnowledgeData] = useState(false);
   const lastTrackedRecommendationKey = useRef<string | null>(null);
 
-  // The screen depends on four data sources, cards, brands, MCC mappings, and
-  // the user's wallet. They are loaded together because the recommendation view
-  // is only meaningful when all four are in sync.
-  const loadKnowledgeLayer = useCallback(async () => {
+  const loadData = useCallback(async () => {
     if (!user) return;
-
     try {
       setLoading(true);
       setError(null);
-
-      const [
-        loadedCards,
-        loadedBrands,
-        loadedMccMappings,
-        loadedWallet,
-        loadedLearningSignals,
-      ] =
-        await Promise.all([
-          getAllCards(),
-          getAllBrands(),
-          getAllMccMappings(),
-          getUserWallet(user.uid),
-          getPaymentLearningSignals(user.uid),
-        ]);
-
+      const [loadedCards, loadedBrands, loadedMccMappings, loadedWallet, loadedLearningSignals] = await Promise.all([
+        getAllCards(),
+        getAllBrands(),
+        getAllMccMappings(),
+        getUserWallet(user.uid),
+        getPaymentLearningSignals(user.uid),
+      ]);
       setCards(loadedCards);
       setBrands(loadedBrands);
       setMccMappings(loadedMccMappings);
       setWallet(loadedWallet.filter((item) => item.enabled));
       setLearningSignals(loadedLearningSignals);
-      setSelectedBrandId((current) => current ?? loadedBrands[0]?.id ?? null);
-    } catch (err) {
-      console.error("Error loading knowledge layer:", err);
-      setError("Could not load knowledge-layer data from the backend.");
+    } catch (loadError) {
+      console.error("Error loading card finder:", loadError);
+      setError("TapTag couldn’t load merchants and wallet cards right now.");
     } finally {
       setLoading(false);
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!user) return;
-    loadKnowledgeLayer();
-  }, [loadKnowledgeLayer, user]);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) return;
-
-      // Reload on focus so returning from Wallet immediately refreshes the cards
-      // available to the recommendation engine.
-      loadKnowledgeLayer();
-    }, [loadKnowledgeLayer, user])
-  );
+  useFocusEffect(useCallback(() => { if (user) loadData(); }, [loadData, user]));
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadKnowledgeLayer();
+    await loadData();
     setRefreshing(false);
-  }, [loadKnowledgeLayer]);
+  }, [loadData]);
 
-  // These derived values are the actual TapTag decision chain. Reading this
-  // block top-to-bottom is the fastest way to understand the product logic.
-  const walletCardIds = new Set(wallet.map((item) => item.id));
-  const walletCards = cards.filter((card) => walletCardIds.has(card.id));
-  const selectedBrand =
-    brands.find((brand) => brand.id === selectedBrandId) ?? brands[0] ?? null;
-  const selectedMccMapping =
-    mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
-  const normalizedCategory = selectedMccMapping?.normalizedCategory ?? "Other";
+  const filteredBrands = brands
+    .filter((brand) => !query.trim() || brand.name.toLowerCase().includes(query.trim().toLowerCase()))
+    .slice(0, 8);
+  const walletIds = new Set(wallet.map((item) => item.id));
+  const walletCards = cards.filter((card) => walletIds.has(card.id));
+  const selectedBrand = brands.find((brand) => brand.id === selectedBrandId) ?? null;
+  const selectedMapping = mccMappings.find((mapping) => mapping.mcc === selectedBrand?.mcc) ?? null;
+  const category = selectedMapping?.normalizedCategory ?? "Other";
   const recommendation = selectedBrand
-    ? recommendBestCardForCategory(walletCards, normalizedCategory, {
-        merchantName: selectedBrand.name,
-        learningSignals,
-      })
+    ? recommendBestCardForCategory(walletCards, category, { merchantName: selectedBrand.name, learningSignals })
     : null;
 
-  const walletSummary = walletCards.length
-    ? walletCards.map((card) => card.name).join(", ")
-    : "No cards selected yet";
-  const hasWalletCards = walletCards.length > 0;
+  const recommendationKey = [selectedBrand?.id, category, recommendation?.bestCard?.id, ...walletIds].join("|");
 
-  function getPaymentPromptInput(source: "lab"): PaymentPromptInput | null {
-    if (!selectedBrand || !recommendation?.bestCard) {
-      return null;
-    }
-
-    return {
-      source,
-      merchantName: selectedBrand.name,
-      merchantMcc: selectedBrand.mcc,
-      normalizedCategory,
-      recommendedCardProductId: recommendation.bestCard.id,
-      recommendedCardName: recommendation.bestCard.name,
-      rewardRate: recommendation.bestRate,
-      reason: recommendation.reason,
-    };
-  }
-
-  // The tracking key includes brand, category, chosen card, and wallet shape so
-  // analytics fire only when the effective recommendation truly changes.
-  const recommendationKey = [
-    selectedBrand?.id ?? "none",
-    normalizedCategory,
-    recommendation?.bestCard?.id ?? "none",
-    walletCards.map((card) => card.id).sort().join(","),
-  ].join("|");
-
-  // recommendation_shown is deduped with a stable key so the app does not flood
-  // events every time React re-renders the same effective recommendation.
   useEffect(() => {
-    if (!user || !selectedBrand || !recommendation?.bestCard || !hasWalletCards) {
-      return;
-    }
-
-    if (lastTrackedRecommendationKey.current === recommendationKey) {
-      return;
-    }
-
+    if (!user || !selectedBrand || !recommendation?.bestCard || lastTrackedRecommendationKey.current === recommendationKey) return;
     lastTrackedRecommendationKey.current = recommendationKey;
-
     trackUserEvent(user.uid, {
       eventType: "recommendation_shown",
       source: "lab",
@@ -195,509 +102,151 @@ export default function Lab() {
       cardProductIds: walletCards.map((card) => card.id),
       recommendedCardProductId: recommendation.bestCard.id,
       recommendedCardName: recommendation.bestCard.name,
-      normalizedCategory,
+      normalizedCategory: category,
       merchantMcc: selectedBrand.mcc,
-      metadata: {
-        rewardRate: recommendation.bestRate,
-      },
-    }).catch((trackingError) => {
-      console.error("Error tracking lab recommendation event:", trackingError);
-    });
-
+      metadata: { rewardRate: recommendation.bestRate },
+    }).catch((trackingError) => console.error("Error tracking finder recommendation:", trackingError));
     updateCompanionPassRecommendation(user.uid, {
       source: "lab",
       merchantName: selectedBrand.name,
       merchantMcc: selectedBrand.mcc,
-      normalizedCategory,
+      normalizedCategory: category,
       recommendedCardProductId: recommendation.bestCard.id,
       recommendedCardName: recommendation.bestCard.name,
       rewardRate: recommendation.bestRate,
       reason: recommendation.reason,
-    }).catch((passError) => {
-      console.error("Error updating companion pass preview:", passError);
-    });
-  }, [
-    hasWalletCards,
-    normalizedCategory,
-    recommendation?.bestCard,
-    recommendation?.bestRate,
-    recommendation?.reason,
-    recommendationKey,
-    selectedBrand,
-    user,
-    walletCards,
-  ]);
+    }).catch((passError) => console.error("Error updating recommendation state:", passError));
+  }, [category, recommendation?.bestCard, recommendation?.bestRate, recommendation?.reason, recommendationKey, selectedBrand, user, walletCards]);
 
-  async function handleOpenPaymentPrompt() {
-    if (!user) return;
-    const input = getPaymentPromptInput("lab");
-    if (!input) return;
-
+  async function handleContinue() {
+    if (!user || !selectedBrand || !recommendation?.bestCard) return;
+    const input: PaymentPromptInput = {
+      source: "lab",
+      merchantName: selectedBrand.name,
+      merchantMcc: selectedBrand.mcc,
+      normalizedCategory: category,
+      recommendedCardProductId: recommendation.bestCard.id,
+      recommendedCardName: recommendation.bestCard.name,
+      rewardRate: recommendation.bestRate,
+      reason: recommendation.reason,
+    };
     await trackUserEvent(user.uid, {
       eventType: "payment_prompt_opened",
       source: "lab",
-      brandId: selectedBrand?.id,
-      brandName: input.merchantName,
-      recommendedCardProductId: input.recommendedCardProductId,
-      recommendedCardName: input.recommendedCardName,
-      normalizedCategory: input.normalizedCategory,
-      merchantMcc: input.merchantMcc,
-      metadata: {
-        rewardRate: input.rewardRate ?? null,
-        openMethod: "lab_button",
-      },
-    }).catch((trackingError) => {
-      console.error("Error tracking lab payment prompt open:", trackingError);
-    });
-
+      brandId: selectedBrand.id,
+      brandName: selectedBrand.name,
+      recommendedCardProductId: recommendation.bestCard.id,
+      recommendedCardName: recommendation.bestCard.name,
+      normalizedCategory: category,
+      merchantMcc: selectedBrand.mcc,
+      metadata: { rewardRate: recommendation.bestRate, openMethod: "merchant_finder" },
+    }).catch(() => {});
     router.push(buildPaymentPromptHref(input));
   }
 
-  async function handleSendTestNotification() {
-    const input = getPaymentPromptInput("lab");
-    if (!input) return;
-
-    await schedulePaymentPromptNotification(input).catch((notificationError) => {
-      console.error("Error scheduling payment prompt notification:", notificationError);
-    });
-  }
-
-  if (!user) {
-    return (
-      <SafeAreaView style={styles.stateContainer}>
-        <Text style={styles.errorTitle}>Lab</Text>
-        <Text style={styles.errorText}>
-          Sign in and select wallet cards to test recommendations.
-        </Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (loading) {
-    return (
-      <SafeAreaView style={styles.stateContainer}>
-        <ActivityIndicator color="#0af" />
-        <Text style={styles.stateText}>Loading TapTag knowledge layer...</Text>
-      </SafeAreaView>
-    );
-  }
-
-  if (error) {
-    return (
-      <SafeAreaView style={styles.stateContainer}>
-        <Text style={styles.errorTitle}>Lab Error</Text>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={loadKnowledgeLayer}>
-          <Text style={styles.retryButtonText}>Retry</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
-  }
+  if (!user) return <SafeAreaView style={styles.state}><Text style={styles.stateTitle}>Sign in to find your best card.</Text></SafeAreaView>;
+  if (loading) return <SafeAreaView style={styles.state}><ActivityIndicator color={colors.accent} /><Text style={styles.stateText}>Loading your wallet…</Text></SafeAreaView>;
+  if (error) return <SafeAreaView style={styles.state}><Ionicons name="cloud-offline-outline" size={28} color={colors.warning} /><Text style={styles.stateTitle}>Card finder is unavailable</Text><Text style={styles.stateText}>{error}</Text><TouchableOpacity style={styles.retry} onPress={loadData}><Text style={styles.retryText}>Try again</Text></TouchableOpacity></SafeAreaView>;
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       <ScrollView
-        style={styles.container}
         contentContainerStyle={getTabScrollContentStyle(width, insets)}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor="#0af"
-          />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />}
+        keyboardDismissMode="on-drag"
+        showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>TapTag Lab</Text>
-        <Text style={styles.subtitle}>
-          Guided merchant testing for the recommendation engine.
-        </Text>
+        <ScreenHeader eyebrow="Merchant search" title="Find the right card" subtitle="Choose where you’re shopping and compare the cards already in your wallet." right={<IconButton icon="close" onPress={() => router.back()} accessibilityLabel="Close card finder" />} />
 
-        <View style={styles.calloutCard}>
-          <Text style={styles.calloutTitle}>How to use this screen</Text>
-          <Text style={styles.calloutText}>1. Make sure your Wallet has at least one selected card.</Text>
-          <Text style={styles.calloutText}>2. Tap a merchant below.</Text>
-          <Text style={styles.calloutText}>3. Confirm the recommended card and explanation make sense.</Text>
+        <View style={styles.searchBar}>
+          <Ionicons name="search" size={20} color={colors.textMuted} />
+          <TextInput style={styles.searchInput} placeholder="Search merchants" placeholderTextColor={colors.textMuted} value={query} onChangeText={setQuery} autoFocus={false} />
+          {query ? <TouchableOpacity onPress={() => setQuery("")}><Ionicons name="close-circle" size={19} color={colors.textMuted} /></TouchableOpacity> : null}
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Recommendation Check</Text>
-          <Text style={styles.helperText}>Wallet: {walletSummary}</Text>
-
-          <View style={styles.pickerRow}>
-            {/* These pills are a deliberately simple stand-in for merchant search.
-                They keep testing deterministic while the product slice stays thin. */}
-            {brands.map((brand) => {
-              const isSelected = brand.id === selectedBrand?.id;
-
-              return (
-                <TouchableOpacity
-                  key={brand.id}
-                  style={[styles.pill, isSelected && styles.pillActive]}
-                  onPress={() => setSelectedBrandId(brand.id)}
-                >
-                  <Text
-                    style={[styles.pillText, isSelected && styles.pillTextActive]}
-                  >
-                    {brand.name}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-
-          <View style={styles.resultCard}>
-            <Text style={styles.resultLabel}>Merchant</Text>
-            <Text style={styles.resultValue}>{selectedBrand?.name ?? "None"}</Text>
-            <Text style={styles.resultLabel}>Best Card</Text>
-            <Text style={styles.resultValue}>{recommendation?.bestCard?.name ?? "None"}</Text>
-            <Text style={styles.resultLabel}>Why</Text>
-            <Text style={styles.resultReason}>
-              {recommendation?.reason ?? "No recommendation available."}
-            </Text>
-            <Text style={styles.resultMeta}>
-              MCC {selectedBrand?.mcc ?? "None"} • Category {selectedMccMapping?.normalizedCategory ?? "None"}
-            </Text>
-            {recommendation?.bestCard && hasWalletCards ? (
-              <View style={styles.promptActions}>
-                <TouchableOpacity
-                  style={styles.promptButtonPrimary}
-                  onPress={handleOpenPaymentPrompt}
-                >
-                  <Text style={styles.promptButtonPrimaryText}>Show Pay Prompt</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.promptButtonSecondary}
-                  onPress={handleSendTestNotification}
-                >
-                  <Text style={styles.promptButtonSecondaryText}>Send Test Notification</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-          </View>
-
-          {!hasWalletCards ? (
-            <View style={styles.tipCard}>
-              <Text style={styles.tipTitle}>Add wallet cards first</Text>
-              <Text style={styles.tipText}>
-                TapTag&apos;s recommendation engine is ready, but it needs at
-                least one selected wallet card before it can choose a best
-                match.
-              </Text>
-            </View>
-          ) : null}
-        </View>
-
-        <View style={styles.section}>
-          <TouchableOpacity
-            style={styles.debugToggle}
-            onPress={() => setShowKnowledgeData((current) => !current)}
-          >
-            <Text style={styles.debugToggleText}>
-              {showKnowledgeData
-                ? "Hide knowledge data"
-                : "Show knowledge data (debug)"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {showKnowledgeData ? (
-          <>
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Knowledge Layer Snapshot</Text>
-          <Text style={styles.helperText}>
-            Raw seeded data behind the recommendation above, for debugging.
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Cards ({cards.length})</Text>
-          {/* The sections below expose raw seeded data so recommendation results
-              can be explained back to the underlying knowledge layer. */}
-          {cards.map((card) => (
-            <View key={card.id} style={styles.itemCard}>
-              <Text style={styles.itemTitle}>
-                {card.name} ({card.id})
-              </Text>
-              <Text style={styles.itemMeta}>
-                {card.issuer} • {card.network} • Annual Fee: $
-                {card.annualFee ?? 0}
-              </Text>
-              <Text style={styles.itemBody}>
-                Rewards:{" "}
-                {card.rewardRules.length
-                  ? card.rewardRules
-                      .map((rule) => `${rule.category} ${rule.rate}x`)
-                      .join(" | ")
-                  : "No reward rules"}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Brands ({brands.length})</Text>
-          {brands.map((brand) => (
-            <View key={brand.id} style={styles.itemCard}>
-              <Text style={styles.itemTitle}>
-                {brand.name} ({brand.id})
-              </Text>
-              <Text style={styles.itemBody}>Category: {brand.category}</Text>
-              <Text style={styles.itemBody}>MCC: {brand.mcc}</Text>
-              <Text style={styles.itemBody}>
-                Common Locations: {brand.commonLocations.length}
-              </Text>
-              <Text style={styles.itemBody}>
-                Sample Location:{" "}
-                {brand.commonLocations[0]
-                  ? `${brand.commonLocations[0].lat}, ${brand.commonLocations[0].lon}`
-                  : "None"}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            MCC Mappings ({mccMappings.length})
-          </Text>
-          {mccMappings.map((mapping) => (
-            <View key={mapping.id} style={styles.itemCard}>
-              <Text style={styles.itemTitle}>MCC {mapping.id}</Text>
-              <Text style={styles.itemBody}>Category: {mapping.category}</Text>
-              <Text style={styles.itemBody}>
-                Normalized Category: {mapping.normalizedCategory}
-              </Text>
-              <Text style={styles.itemBody}>
-                Description: {mapping.description || "None"}
-              </Text>
-            </View>
-          ))}
-        </View>
-          </>
+        {!walletCards.length ? (
+          <View style={styles.walletPrompt}><Ionicons name="wallet-outline" size={23} color={colors.warning} /><View style={styles.walletPromptCopy}><Text style={styles.walletPromptTitle}>Add cards before comparing</Text><Text style={styles.walletPromptBody}>Recommendations are personalized to the cards in your wallet.</Text></View><TouchableOpacity onPress={() => router.push("/(tabs)/Cards")}><Text style={styles.walletPromptAction}>Open wallet</Text></TouchableOpacity></View>
         ) : null}
+
+        <Text style={styles.sectionLabel}>{query ? "Search results" : "Popular merchants"}</Text>
+        <View style={styles.merchantList}>
+          {filteredBrands.map((brand) => {
+            const active = brand.id === selectedBrandId;
+            return (
+              <TouchableOpacity key={brand.id} style={[styles.merchantRow, active && styles.merchantRowActive]} onPress={() => setSelectedBrandId(brand.id)}>
+                <View style={[styles.merchantIcon, active && styles.merchantIconActive]}><Text style={[styles.merchantInitial, active && styles.merchantInitialActive]}>{brand.name[0]}</Text></View>
+                <View style={styles.merchantCopy}><Text style={styles.merchantName}>{brand.name}</Text><Text style={styles.merchantCategory}>{brand.category}</Text></View>
+                <Ionicons name={active ? "checkmark-circle" : "chevron-forward"} size={20} color={active ? colors.accent : colors.textMuted} />
+              </TouchableOpacity>
+            );
+          })}
+          {!filteredBrands.length ? <View style={styles.noResults}><Text style={styles.noResultsText}>No supported merchants match “{query}”.</Text></View> : null}
+        </View>
+
+        {selectedBrand ? (
+          <View style={styles.resultCard}>
+            <View style={styles.resultTopRow}><View style={styles.matchPill}><Ionicons name="sparkles" size={14} color={colors.accent} /><Text style={styles.matchText}>Best match</Text></View><Text style={styles.categoryPill}>{category}</Text></View>
+            {recommendation?.bestCard ? (
+              <>
+                <Text style={styles.resultMerchant}>At {selectedBrand.name}, use</Text>
+                <Text style={styles.resultCardName}>{recommendation.bestCard.name}</Text>
+                <View style={styles.rateRow}><Text style={styles.rateValue}>{recommendation.bestRate}x</Text><Text style={styles.rateLabel}>{category} rewards</Text></View>
+                <Text style={styles.reason}>{recommendation.reason}</Text>
+                <TouchableOpacity style={styles.continueButton} onPress={handleContinue}><Ionicons name="wallet-outline" size={18} color={colors.accentInk} /><Text style={styles.continueText}>Use this card</Text><Ionicons name="arrow-forward" size={18} color={colors.accentInk} /></TouchableOpacity>
+              </>
+            ) : (
+              <><Text style={styles.resultCardName}>No eligible wallet card</Text><Text style={styles.reason}>Add at least one card to get a recommendation for {selectedBrand.name}.</Text></>
+            )}
+          </View>
+        ) : (
+          <View style={styles.chooseState}><Ionicons name="storefront-outline" size={28} color={colors.violet} /><Text style={styles.chooseTitle}>Choose a merchant</Text><Text style={styles.chooseBody}>Tap a merchant above to see which card earns the most.</Text></View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
-  stateContainer: {
-    flex: 1,
-    backgroundColor: "#000",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-  stateText: {
-    color: "#aaa",
-    marginTop: 12,
-    fontSize: 16,
-    textAlign: "center",
-  },
-  errorTitle: {
-    color: "#f55",
-    fontSize: 22,
-    fontWeight: "700",
-    marginBottom: 8,
-  },
-  errorText: {
-    color: "#fff",
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  retryButton: {
-    backgroundColor: "#0af",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 11,
-  },
-  retryButtonText: {
-    color: "#00131f",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  title: {
-    color: "#0af",
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#aaa",
-    fontSize: 15,
-    marginTop: 6,
-    marginBottom: 20,
-  },
-  helperText: {
-    color: "#888",
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 12,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    color: "#0af",
-    fontSize: 18,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-  pickerRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 12,
-  },
-  pill: {
-    backgroundColor: "#111",
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: "#333",
-  },
-  pillActive: {
-    backgroundColor: "#0af",
-    borderColor: "#0af",
-  },
-  pillText: {
-    color: "#ddd",
-    fontSize: 14,
-    fontWeight: "500",
-  },
-  pillTextActive: {
-    color: "#000",
-  },
-  calloutCard: {
-    backgroundColor: "#111822",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  calloutTitle: {
-    color: "#8ecfff",
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
-  calloutText: {
-    color: "#cfe9ff",
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  resultCard: {
-    backgroundColor: "#0f1620",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 10,
-  },
-  resultLabel: {
-    color: "#8ecfff",
-    fontSize: 12,
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  resultValue: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 10,
-  },
-  resultReason: {
-    color: "#ddd",
-    fontSize: 15,
-    lineHeight: 21,
-    marginBottom: 10,
-  },
-  resultMeta: {
-    color: "#888",
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  promptActions: {
-    gap: 10,
-    marginTop: 6,
-  },
-  promptButtonPrimary: {
-    backgroundColor: "#0af",
-    borderRadius: 8,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  promptButtonPrimaryText: {
-    color: "#00131f",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  promptButtonSecondary: {
-    backgroundColor: "#1a1a1a",
-    borderColor: "#2f4b5f",
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  promptButtonSecondaryText: {
-    color: "#8ecfff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  itemCard: {
-    backgroundColor: "#111",
-    borderRadius: 10,
-    padding: 14,
-    marginBottom: 10,
-  },
-  debugToggle: {
-    backgroundColor: "#111",
-    borderColor: "#2a2a2a",
-    borderRadius: 8,
-    borderWidth: 1,
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-  debugToggleText: {
-    color: "#888",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  tipCard: {
-    backgroundColor: "#111822",
-    borderRadius: 10,
-    padding: 14,
-    marginTop: 2,
-  },
-  tipTitle: {
-    color: "#8ecfff",
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-  tipText: {
-    color: "#cfe9ff",
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  itemTitle: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 6,
-  },
-  itemMeta: {
-    color: "#0af",
-    fontSize: 13,
-    marginBottom: 6,
-  },
-  itemBody: {
-    color: "#ddd",
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  container: { backgroundColor: colors.background, flex: 1 },
+  state: { alignItems: "center", backgroundColor: colors.background, flex: 1, justifyContent: "center", padding: spacing.xl },
+  stateTitle: { color: colors.text, fontSize: 20, fontWeight: "900", marginTop: spacing.md, textAlign: "center" },
+  stateText: { color: colors.textSecondary, fontSize: 14, lineHeight: 20, marginTop: spacing.sm, textAlign: "center" },
+  retry: { backgroundColor: colors.accent, borderRadius: radii.medium, marginTop: spacing.lg, paddingHorizontal: spacing.lg, paddingVertical: 12 },
+  retryText: { color: colors.accentInk, fontSize: 14, fontWeight: "900" },
+  searchBar: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radii.medium, borderWidth: 1, flexDirection: "row", gap: spacing.sm, minHeight: 54, paddingHorizontal: spacing.md },
+  searchInput: { color: colors.text, flex: 1, fontSize: 15, minHeight: 52 },
+  walletPrompt: { alignItems: "center", backgroundColor: colors.warningSurface, borderColor: "#4D3D18", borderRadius: radii.medium, borderWidth: 1, flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, padding: spacing.md },
+  walletPromptCopy: { flex: 1 },
+  walletPromptTitle: { color: colors.text, fontSize: 13, fontWeight: "800" },
+  walletPromptBody: { color: "#D5C39A", fontSize: 11, lineHeight: 16, marginTop: 2 },
+  walletPromptAction: { color: colors.warning, fontSize: 12, fontWeight: "900" },
+  sectionLabel: { color: colors.textSecondary, fontSize: 13, fontWeight: "800", marginBottom: spacing.sm, marginTop: spacing.lg },
+  merchantList: { backgroundColor: colors.surface, borderColor: colors.borderSoft, borderRadius: radii.large, borderWidth: 1, overflow: "hidden" },
+  merchantRow: { alignItems: "center", borderBottomColor: colors.borderSoft, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 66, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  merchantRowActive: { backgroundColor: "#10271F" },
+  merchantIcon: { alignItems: "center", backgroundColor: colors.surfaceRaised, borderRadius: 14, height: 40, justifyContent: "center", width: 40 },
+  merchantIconActive: { backgroundColor: colors.accent },
+  merchantInitial: { color: colors.textSecondary, fontSize: 15, fontWeight: "900" },
+  merchantInitialActive: { color: colors.accentInk },
+  merchantCopy: { flex: 1 },
+  merchantName: { color: colors.text, fontSize: 14, fontWeight: "800" },
+  merchantCategory: { color: colors.textMuted, fontSize: 11, marginTop: 3 },
+  noResults: { padding: spacing.lg },
+  noResultsText: { color: colors.textMuted, fontSize: 13, textAlign: "center" },
+  resultCard: { backgroundColor: colors.surfaceRaised, borderColor: "#315644", borderRadius: radii.xlarge, borderWidth: 1, marginTop: spacing.lg, padding: spacing.lg, ...shadows.soft },
+  resultTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.lg },
+  matchPill: { alignItems: "center", backgroundColor: "#15372C", borderRadius: radii.pill, flexDirection: "row", gap: 6, paddingHorizontal: 9, paddingVertical: 6 },
+  matchText: { color: colors.accent, fontSize: 11, fontWeight: "800", textTransform: "uppercase" },
+  categoryPill: { backgroundColor: colors.surfaceSoft, borderRadius: radii.pill, color: colors.blue, fontSize: 11, fontWeight: "800", overflow: "hidden", paddingHorizontal: 9, paddingVertical: 6 },
+  resultMerchant: { color: colors.textSecondary, fontSize: 14, marginBottom: 5 },
+  resultCardName: { color: colors.text, fontSize: 25, fontWeight: "900", letterSpacing: -0.7, lineHeight: 31 },
+  rateRow: { alignItems: "baseline", flexDirection: "row", gap: 7, marginTop: spacing.md },
+  rateValue: { color: colors.accent, fontSize: 23, fontWeight: "900" },
+  rateLabel: { color: colors.textSecondary, fontSize: 13, fontWeight: "700" },
+  reason: { color: colors.textSecondary, fontSize: 13, lineHeight: 19, marginTop: spacing.md },
+  continueButton: { alignItems: "center", backgroundColor: colors.accent, borderRadius: radii.medium, flexDirection: "row", gap: spacing.sm, justifyContent: "center", marginTop: spacing.lg, minHeight: 50, paddingHorizontal: spacing.md },
+  continueText: { color: colors.accentInk, flex: 1, fontSize: 14, fontWeight: "900", textAlign: "center" },
+  chooseState: { alignItems: "center", backgroundColor: colors.surfaceSoft, borderRadius: radii.large, marginTop: spacing.lg, padding: spacing.xl },
+  chooseTitle: { color: colors.text, fontSize: 16, fontWeight: "800", marginTop: spacing.sm },
+  chooseBody: { color: colors.textMuted, fontSize: 13, lineHeight: 18, marginTop: 5, textAlign: "center" },
 });

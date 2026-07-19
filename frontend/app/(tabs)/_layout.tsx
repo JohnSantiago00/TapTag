@@ -5,6 +5,7 @@ import {
   getTabBarBottomPadding,
   getTabBarHeight,
 } from "../../src/styles/layout";
+import { colors, shadows } from "../../src/styles/theme";
 
 /*
   File role:
@@ -14,9 +15,6 @@ import {
   are the user-facing labels for those routes.
 */
 
-// Tab order mirrors the intended tester journey, understand the product,
-// configure Wallet, verify the engine in Lab, test the magic moment in Nearby,
-// then confirm state and events in Profile.
 export default function TabsLayout() {
   const insets = useSafeAreaInsets();
 
@@ -24,18 +22,26 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        // Keeping the visual shell consistent helps the app feel less like a
-        // prototype, even though the product scope is still intentionally thin.
-        tabBarActiveTintColor: "#0af",
-        tabBarInactiveTintColor: "#888",
+        tabBarActiveTintColor: colors.accent,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarHideOnKeyboard: true,
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "600" },
+        tabBarItemStyle: { borderRadius: 16, marginHorizontal: 3 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: 2 },
         tabBarStyle: {
-          backgroundColor: "#000",
-          borderTopColor: "#222",
+          backgroundColor: colors.backgroundElevated,
+          borderColor: colors.border,
+          borderRadius: 24,
+          borderTopColor: colors.border,
+          borderTopWidth: 1,
+          bottom: Math.max(insets.bottom, 8),
           height: getTabBarHeight(insets.bottom),
+          left: 12,
           paddingBottom: getTabBarBottomPadding(insets.bottom),
-          paddingTop: 6,
+          paddingHorizontal: 7,
+          paddingTop: 8,
+          position: "absolute",
+          right: 12,
+          ...shadows.floating,
         },
       }}
     >
@@ -60,10 +66,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="Lab"
         options={{
-          title: "Lab",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flask" color={color} size={size} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen

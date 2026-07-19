@@ -18,6 +18,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { useFocusEffect } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +34,9 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { getTabScrollContentStyle } from "@/src/styles/layout";
+import { ScreenHeader } from "@/src/components/AppChrome";
+import { colors, radii, spacing } from "@/src/styles/theme";
+import { requestPaymentPromptNotificationPermissions } from "@/src/services/paymentPrompt";
 
 /*
   File role:
@@ -161,6 +165,12 @@ export default function Profile() {
     try {
       setSavingNotifications(true);
       setStatus(null);
+      if (enabled) {
+        const granted = await requestPaymentPromptNotificationPermissions();
+        if (!granted) {
+          throw new Error("Notification permission was not granted.");
+        }
+      }
       const savedProfile = await updateUserProfile(user.uid, {
         notificationsEnabled: enabled,
       });
@@ -255,56 +265,30 @@ export default function Profile() {
     await signOut(auth);
   };
 
-  // These counts are intentionally derived on the client because this is a tiny
-  // beta QA surface, not a dashboard backed by aggregate analytics.
-  const eventCounts = recentEvents.reduce(
-    (counts, event) => {
-      counts[event.eventType] = (counts[event.eventType] ?? 0) + 1;
-      return counts;
-    },
-    {
-      recommendation_shown: 0,
-      recommendation_opened: 0,
-      recommendation_dismissed: 0,
-      payment_prompt_opened: 0,
-      payment_wallet_opened: 0,
-      payment_prompt_confirmed: 0,
-      payment_prompt_feedback: 0,
-      companion_pass_updated: 0,
-      wallet_updated: 0,
-      brand_muted: 0,
-    } as Record<string, number>
-  );
-  const latestEvent = recentEvents[0] ?? null;
-  const trackingHealthText = latestEvent
-    ? `Tracking active. Last event: ${latestEvent.eventType} from ${latestEvent.source}.`
-    : "Tracking active, but no events have been recorded yet.";
-
-  // This formatter turns raw event docs into short human-readable summaries.
   function formatEventSummary(event: TapTagEvent) {
     switch (event.eventType) {
       case "wallet_updated":
-        return `Wallet ${event.action ?? "updated"}${event.cardProductId ? `, ${event.cardProductId}` : ""}`;
+        return "Wallet updated";
       case "recommendation_shown":
-        return `Shown${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return `${event.recommendedCardName ?? "A card"} recommended${event.brandName ? ` at ${event.brandName}` : ""}`;
       case "recommendation_opened":
-        return `Opened${event.brandName ? `, ${event.brandName}` : ""}`;
+        return `Viewed recommendation${event.brandName ? ` for ${event.brandName}` : ""}`;
       case "recommendation_dismissed":
-        return `Dismissed${event.brandName ? `, ${event.brandName}` : ""}`;
+        return `Dismissed recommendation${event.brandName ? ` for ${event.brandName}` : ""}`;
       case "payment_prompt_opened":
-        return `Pay prompt opened${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return `Opened ${event.recommendedCardName ?? "card"}${event.brandName ? ` for ${event.brandName}` : ""}`;
       case "payment_wallet_opened":
-        return `Wallet handoff${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return `Opened device wallet${event.recommendedCardName ? ` for ${event.recommendedCardName}` : ""}`;
       case "payment_prompt_confirmed":
-        return `Used card${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return `Used ${event.recommendedCardName ?? "recommended card"}${event.brandName ? ` at ${event.brandName}` : ""}`;
       case "payment_prompt_feedback":
-        return `Payment feedback${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return `Updated a card recommendation${event.brandName ? ` for ${event.brandName}` : ""}`;
       case "companion_pass_updated":
-        return `Companion pass updated${event.brandName ? `, ${event.brandName}` : ""}${event.recommendedCardName ? `, ${event.recommendedCardName}` : ""}`;
+        return "Wallet recommendation updated";
       case "brand_muted":
-        return `Muted${event.brandName ? `, ${event.brandName}` : ""}`;
+        return `Muted ${event.brandName ?? "merchant"}`;
       default:
-        return event.eventType;
+        return "Account activity updated";
     }
   }
 
@@ -342,17 +326,21 @@ export default function Profile() {
           />
         }
       >
-        <Text style={styles.title}>Profile</Text>
-        <Text style={styles.subtitle}>
-          Lightweight user settings, privacy-first by default.
-        </Text>
+        <ScreenHeader eyebrow="Account" title="Your profile" subtitle="Manage your identity, preferences, and privacy controls." />
+
+        <View style={styles.profileHero}>
+          <View style={styles.profileAvatar}><Text style={styles.profileAvatarText}>{(draftDisplayName || user.email || "T")[0].toUpperCase()}</Text></View>
+          <View style={styles.profileHeroCopy}>
+            <Text style={styles.profileName}>{draftDisplayName || "TapTag member"}</Text>
+            <Text style={styles.profileEmail}>{user.email ?? "Email unavailable"}</Text>
+          </View>
+          <View style={styles.walletCountPill}><Text style={styles.walletCountValue}>{walletCount}</Text><Text style={styles.walletCountLabel}>cards</Text></View>
+        </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Account</Text>
-          <Text style={styles.label}>Email</Text>
-          <Text style={styles.value}>{user.email ?? "Unknown"}</Text>
+          <View style={styles.sectionHeaderRow}><View style={styles.sectionIcon}><Ionicons name="person-outline" size={18} color={colors.violet} /></View><Text style={styles.sectionTitle}>Personal details</Text></View>
 
-          <Text style={styles.label}>Display Name</Text>
+          <Text style={styles.label}>Display name</Text>
           <TextInput
             style={styles.input}
             placeholder="Optional display name"
@@ -368,30 +356,27 @@ export default function Profile() {
             disabled={saving}
           >
             <Text style={styles.primaryButtonText}>
-              {saving ? "Saving..." : "Save Profile"}
+              {saving ? "Saving…" : "Save changes"}
             </Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Privacy & Notifications</Text>
-          <Text style={styles.label}>Privacy Mode</Text>
-          <Text style={styles.value}>{profile?.privacyMode ?? "strict"}</Text>
+          <View style={styles.sectionHeaderRow}><View style={styles.sectionIcon}><Ionicons name="notifications-outline" size={18} color={colors.blue} /></View><Text style={styles.sectionTitle}>Preferences</Text></View>
 
           <View style={styles.settingRow}>
             <View style={styles.settingCopy}>
               <Text style={styles.settingTitle}>Nearby notifications</Text>
               <Text style={styles.settingBody}>
-                Allow TapTag to schedule local payment prompts when Nearby finds
-                a card recommendation. In-app nudges still work when this is off.
+                Receive a local alert when Nearby has a card recommendation ready.
               </Text>
             </View>
             <Switch
               value={notificationsEnabled}
               onValueChange={handleNotificationToggle}
               disabled={savingNotifications}
-              trackColor={{ false: "#333", true: "#075f8f" }}
-              thumbColor={notificationsEnabled ? "#0af" : "#f4f4f4"}
+              trackColor={{ false: colors.border, true: "#245B49" }}
+              thumbColor={notificationsEnabled ? colors.accent : colors.textSecondary}
               accessibilityLabel="Toggle nearby notifications"
             />
           </View>
@@ -399,81 +384,40 @@ export default function Profile() {
             <Text style={styles.smallStatus}>Saving notification preference...</Text>
           ) : null}
 
-          <Text style={styles.label}>Selected Wallet Cards</Text>
-          <Text style={styles.value}>{walletCount}</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Event Tracking Health</Text>
-          <Text style={styles.bodyText}>{trackingHealthText}</Text>
-          <View style={styles.metricsRow}>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Shown</Text>
-              <Text style={styles.metricValue}>{eventCounts.recommendation_shown}</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Opened</Text>
-              <Text style={styles.metricValue}>{eventCounts.recommendation_opened}</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Dismissed</Text>
-              <Text style={styles.metricValue}>{eventCounts.recommendation_dismissed}</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Wallet</Text>
-              <Text style={styles.metricValue}>{eventCounts.wallet_updated}</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Prompt</Text>
-              <Text style={styles.metricValue}>
-                {eventCounts.payment_prompt_opened +
-                  eventCounts.payment_wallet_opened +
-                  eventCounts.payment_prompt_confirmed +
-                  eventCounts.payment_prompt_feedback +
-                  eventCounts.companion_pass_updated}
-              </Text>
-            </View>
+          <View style={styles.preferenceDivider} />
+          <View style={styles.staticSettingRow}>
+            <View style={styles.settingCopy}><Text style={styles.settingTitle}>Privacy mode</Text><Text style={styles.settingBody}>Strict mode minimizes retained account and location data.</Text></View>
+            <View style={styles.strictPill}><Ionicons name="shield-checkmark" size={14} color={colors.accent} /><Text style={styles.strictText}>{profile?.privacyMode ?? "strict"}</Text></View>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Recent Event Activity</Text>
-          <Text style={styles.bodyText}>
-            Last {recentEvents.length} tracked events for quick Level 8 QA.
-          </Text>
+          <View style={styles.sectionHeaderRow}><View style={styles.sectionIcon}><Ionicons name="time-outline" size={18} color={colors.accent} /></View><Text style={styles.sectionTitle}>Recent activity</Text></View>
           <View style={styles.eventsList}>
             {recentEvents.length ? (
-              // This is intentionally chronological QA feedback, not a deeply
-              // modeled audit log UI.
-              recentEvents.map((event) => (
+              recentEvents.slice(0, 5).map((event) => (
                 <View key={event.id ?? `${event.eventType}-${event.occurredAt}`} style={styles.eventRow}>
-                  <Text style={styles.eventTitle}>{event.eventType}</Text>
-                  <Text style={styles.eventMeta}>
-                    {event.source} • {new Date(event.occurredAt).toLocaleString()}
-                  </Text>
-                  <Text style={styles.eventBody}>{formatEventSummary(event)}</Text>
+                  <View style={styles.eventDot} />
+                  <View style={styles.eventCopy}><Text style={styles.eventTitle}>{formatEventSummary(event)}</Text><Text style={styles.eventMeta}>{new Date(event.occurredAt).toLocaleString()}</Text></View>
                 </View>
               ))
             ) : (
-              <Text style={styles.bodyText}>No recent events yet.</Text>
+              <Text style={styles.bodyText}>Your wallet and recommendation activity will appear here.</Text>
             )}
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Project Scope Today</Text>
-          <Text style={styles.bodyText}>
-            TapTag stores lightweight profile and wallet-reference data only. It
-            does not store card numbers, CVV, expiration dates, billing
-            addresses, or bank credentials.
-          </Text>
+          <View style={styles.sectionHeaderRow}><View style={styles.sectionIcon}><Ionicons name="lock-closed-outline" size={18} color={colors.warning} /></View><Text style={styles.sectionTitle}>Your data</Text></View>
+          <View style={styles.dataRow}><Ionicons name="checkmark-circle" size={17} color={colors.accent} /><Text style={styles.bodyText}>Only card product references and optional last four</Text></View>
+          <View style={styles.dataRow}><Ionicons name="checkmark-circle" size={17} color={colors.accent} /><Text style={styles.bodyText}>No CVV, expiration, billing address, or bank credentials</Text></View>
+          <View style={styles.dataRow}><Ionicons name="checkmark-circle" size={17} color={colors.accent} /><Text style={styles.bodyText}>No history of your precise locations</Text></View>
         </View>
 
         <View style={styles.dangerCard}>
-          <Text style={styles.dangerTitle}>Delete Account</Text>
+          <Text style={styles.dangerTitle}>Delete account</Text>
           <Text style={styles.bodyText}>
-            Permanently removes your TapTag profile, wallet refs, recent events,
-            companion pass preview, and Firebase login.
+            Permanently remove your profile, wallet references, activity, and login.
           </Text>
           <TextInput
             style={styles.input}
@@ -528,7 +472,7 @@ export default function Profile() {
         ) : null}
 
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
+          <Ionicons name="log-out-outline" size={18} color={colors.text} /><Text style={styles.logoutText}>Sign out</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
@@ -538,53 +482,65 @@ export default function Profile() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
   },
   loadingContainer: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: colors.background,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
   loadingText: {
-    color: "#aaa",
+    color: colors.textSecondary,
     marginTop: 12,
     fontSize: 16,
   },
   title: {
-    color: "#0af",
+    color: colors.text,
     fontSize: 28,
     fontWeight: "700",
   },
   subtitle: {
-    color: "#888",
+    color: colors.textSecondary,
     fontSize: 15,
     lineHeight: 21,
     marginTop: 6,
     marginBottom: 18,
   },
   card: {
-    backgroundColor: "#111",
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
+    backgroundColor: colors.surface,
+    borderColor: colors.borderSoft,
+    borderRadius: radii.large,
+    borderWidth: 1,
+    padding: spacing.md,
+    marginBottom: spacing.md,
   },
+  profileHero: { alignItems: "center", backgroundColor: colors.surfaceRaised, borderColor: colors.border, borderRadius: radii.xlarge, borderWidth: 1, flexDirection: "row", gap: spacing.md, marginBottom: spacing.lg, padding: spacing.md },
+  profileAvatar: { alignItems: "center", backgroundColor: colors.violet, borderRadius: 22, height: 48, justifyContent: "center", width: 48 },
+  profileAvatarText: { color: colors.white, fontSize: 18, fontWeight: "900" },
+  profileHeroCopy: { flex: 1 },
+  profileName: { color: colors.text, fontSize: 17, fontWeight: "900", marginBottom: 3 },
+  profileEmail: { color: colors.textMuted, fontSize: 12 },
+  walletCountPill: { alignItems: "center", backgroundColor: colors.surfaceSoft, borderRadius: radii.medium, minWidth: 56, paddingHorizontal: 10, paddingVertical: 8 },
+  walletCountValue: { color: colors.accent, fontSize: 17, fontWeight: "900" },
+  walletCountLabel: { color: colors.textMuted, fontSize: 10, fontWeight: "700" },
+  sectionHeaderRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, marginBottom: spacing.md },
+  sectionIcon: { alignItems: "center", backgroundColor: colors.surfaceRaised, borderRadius: 10, height: 34, justifyContent: "center", width: 34 },
   sectionTitle: {
-    color: "#0af",
+    color: colors.text,
     fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
+    fontWeight: "800",
   },
   label: {
-    color: "#888",
+    color: colors.textSecondary,
     fontSize: 13,
     marginTop: 6,
     marginBottom: 4,
     textTransform: "uppercase",
   },
   value: {
-    color: "#fff",
+    color: colors.text,
     fontSize: 15,
     lineHeight: 21,
   },
@@ -598,27 +554,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingTitle: {
-    color: "#fff",
+    color: colors.text,
     fontSize: 15,
     fontWeight: "600",
     marginBottom: 4,
   },
   settingBody: {
-    color: "#aaa",
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   smallStatus: {
-    color: "#8ecfff",
+    color: colors.accent,
     fontSize: 13,
     lineHeight: 18,
     marginTop: 8,
   },
   bodyText: {
-    color: "#ddd",
-    fontSize: 15,
-    lineHeight: 21,
+    color: colors.textSecondary,
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 19,
   },
+  preferenceDivider: { backgroundColor: colors.borderSoft, height: 1, marginVertical: spacing.md },
+  staticSettingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md },
+  strictPill: { alignItems: "center", backgroundColor: "#15352C", borderRadius: radii.pill, flexDirection: "row", gap: 5, paddingHorizontal: 9, paddingVertical: 6 },
+  strictText: { color: colors.accent, fontSize: 11, fontWeight: "800", textTransform: "capitalize" },
   metricsRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -644,40 +605,42 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   eventsList: {
-    marginTop: 12,
-    gap: 10,
+    gap: 2,
   },
   eventRow: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 8,
-    padding: 12,
+    alignItems: "flex-start",
+    borderBottomColor: colors.borderSoft,
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
+  eventDot: { backgroundColor: colors.accent, borderRadius: 4, height: 7, marginTop: 6, width: 7 },
+  eventCopy: { flex: 1 },
   eventTitle: {
-    color: "#fff",
+    color: colors.text,
     fontSize: 14,
     fontWeight: "600",
     marginBottom: 4,
   },
   eventMeta: {
-    color: "#888",
+    color: colors.textMuted,
     fontSize: 12,
-    marginBottom: 4,
   },
-  eventBody: {
-    color: "#ddd",
-    fontSize: 14,
-    lineHeight: 20,
-  },
+  dataRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.sm, marginBottom: spacing.sm },
   input: {
-    backgroundColor: "#1a1a1a",
-    color: "#fff",
-    padding: 12,
-    borderRadius: 8,
+    backgroundColor: colors.surfaceSoft,
+    borderColor: colors.border,
+    borderRadius: radii.medium,
+    borderWidth: 1,
+    color: colors.text,
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
     marginTop: 4,
   },
   primaryButton: {
-    backgroundColor: "#0af",
-    borderRadius: 8,
+    backgroundColor: colors.accent,
+    borderRadius: radii.medium,
     paddingVertical: 12,
     alignItems: "center",
     marginTop: 12,
@@ -686,20 +649,20 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   primaryButtonText: {
-    color: "#fff",
+    color: colors.accentInk,
     fontSize: 15,
     fontWeight: "600",
   },
   dangerCard: {
-    backgroundColor: "#160d0d",
-    borderColor: "#4d2424",
-    borderRadius: 8,
+    backgroundColor: colors.dangerSurface,
+    borderColor: "#59303A",
+    borderRadius: radii.large,
     borderWidth: 1,
     marginBottom: 12,
     padding: 16,
   },
   dangerTitle: {
-    color: "#ff8a8a",
+    color: colors.danger,
     fontSize: 16,
     fontWeight: "700",
     marginBottom: 10,
@@ -727,39 +690,42 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   statusCard: {
-    backgroundColor: "#111822",
-    borderRadius: 8,
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: radii.medium,
     padding: 14,
     marginBottom: 12,
   },
   status: {
-    color: "#ddd",
+    color: colors.textSecondary,
     fontSize: 14,
     lineHeight: 20,
   },
   retryButton: {
     alignSelf: "flex-start",
-    backgroundColor: "#0af",
+    backgroundColor: colors.accent,
     borderRadius: 8,
     marginTop: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   retryButtonText: {
-    color: "#00131f",
+    color: colors.accentInk,
     fontSize: 14,
     fontWeight: "700",
   },
   logoutButton: {
-    backgroundColor: "#221111",
-    borderColor: "#663333",
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
     alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radii.medium,
+    flexDirection: "row",
+    gap: spacing.sm,
+    justifyContent: "center",
+    paddingVertical: 12,
   },
   logoutText: {
-    color: "#ff8a8a",
+    color: colors.text,
     fontSize: 15,
     fontWeight: "600",
   },

@@ -1,12 +1,14 @@
 import * as Notifications from "expo-notifications";
 import { Href } from "expo-router";
-import { Linking, Platform } from "react-native";
+import { AppState, Linking, Platform } from "react-native";
+import { shouldPresentPaymentNotification } from "../utils/notificationPolicy";
 
 export const PAYMENT_PROMPT_NOTIFICATION_CATEGORY = "payment-recommendation";
 export const PAYMENT_PROMPT_ACTION_OPEN_WALLET = "open-wallet";
 export const PAYMENT_PROMPT_ACTION_SHOW_CARD = "show-card";
 export const PAYMENT_PROMPT_ACTION_USED_CARD = "used-card";
 const PAYMENT_PROMPT_NOTIFICATION_TYPE = "payment_prompt";
+const PAYMENT_PROMPT_ANDROID_CHANNEL = "payment-recommendations";
 
 export type PaymentPromptSource = "lab" | "nearby" | "notification";
 
@@ -42,12 +44,15 @@ export type WalletOpenResult =
 let notificationsConfigured = false;
 
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-  }),
+  handleNotification: async () => {
+    const shouldPresent = shouldPresentPaymentNotification(AppState.currentState);
+    return {
+      shouldShowBanner: shouldPresent,
+      shouldShowList: shouldPresent,
+      shouldPlaySound: shouldPresent,
+      shouldSetBadge: false,
+    };
+  },
 });
 
 export function buildPaymentPromptParams(input: PaymentPromptInput): PaymentPromptParams {
@@ -149,6 +154,18 @@ export function isPaymentPromptNotificationData(
 export async function configurePaymentPromptNotifications() {
   if (notificationsConfigured) return;
 
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync(
+      PAYMENT_PROMPT_ANDROID_CHANNEL,
+      {
+        name: "Nearby card recommendations",
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: "default",
+        vibrationPattern: [0, 200, 150, 200],
+      }
+    );
+  }
+
   await Notifications.setNotificationCategoryAsync(
     PAYMENT_PROMPT_NOTIFICATION_CATEGORY,
     [
@@ -179,12 +196,20 @@ export async function configurePaymentPromptNotifications() {
   notificationsConfigured = true;
 }
 
-export async function schedulePaymentPromptNotification(input: PaymentPromptInput) {
+export async function requestPaymentPromptNotificationPermissions() {
+  await configurePaymentPromptNotifications();
+  return ensureNotificationPermissions();
+}
+
+export async function schedulePaymentPromptNotification(
+  input: PaymentPromptInput,
+  delaySeconds = 0
+) {
   await configurePaymentPromptNotifications();
 
   const permissions = await ensureNotificationPermissions();
   if (!permissions) {
-    return false;
+    return null;
   }
 
   const merchant = input.merchantName ?? "this merchant";
@@ -193,17 +218,27 @@ export async function schedulePaymentPromptNotification(input: PaymentPromptInpu
       ? `${input.rewardRate}x ${input.normalizedCategory}`
       : "best available rewards";
 
-  await Notifications.scheduleNotificationAsync({
+  return Notifications.scheduleNotificationAsync({
     content: {
       title: `You're at ${merchant}: pay with ${input.recommendedCardName}`,
       body: `${reward}. Tap to open Wallet.`,
       data: getPaymentPromptNotificationData(input),
       categoryIdentifier: PAYMENT_PROMPT_NOTIFICATION_CATEGORY,
+      sound: "default",
     },
-    trigger: null,
+    trigger: delaySeconds > 0
+      ? {
+          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: delaySeconds,
+          channelId: PAYMENT_PROMPT_ANDROID_CHANNEL,
+        }
+      : null,
   });
+}
 
-  return true;
+export async function cancelPaymentPromptNotification(identifier: string | null) {
+  if (!identifier) return;
+  await Notifications.cancelScheduledNotificationAsync(identifier).catch(() => undefined);
 }
 
 async function ensureNotificationPermissions() {

@@ -14,13 +14,44 @@ export interface KnowledgeCardRewardRule {
   rate: number;
 }
 
+export interface KnowledgeCardEarningRule extends KnowledgeCardRewardRule {
+  id: string;
+  unit: "points" | "miles" | "percent";
+  subcategories?: string[];
+  channels?: string[];
+  merchants?: string[];
+  merchantExamples?: string[];
+  geography?: string;
+  exclusions?: string[];
+  requiresActivation?: boolean;
+  validFrom?: string;
+  validThrough?: string;
+  afterCapRate?: number;
+  selector?: string;
+  eligibleCategories?: string[];
+  details?: string;
+  cap?: {
+    amount: number;
+    period: string;
+    sharedGroup?: string;
+  };
+}
+
 export interface KnowledgeCard {
   id: string;
   name: string;
   issuer: string;
   network: string;
   rewardRules: KnowledgeCardRewardRule[];
+  earningRules?: KnowledgeCardEarningRule[];
   annualFee?: number | null;
+  rewardCurrency?: {
+    type: string;
+    name: string;
+  };
+  requirements?: string[];
+  notes?: string[];
+  reviewedAt?: string;
   isCustom?: boolean;
 }
 
@@ -44,6 +75,64 @@ function normalizeRewardRules(rawRules: unknown): KnowledgeCardRewardRule[] {
     .filter((rule) => rule.rate > 0);
 }
 
+function stringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()))
+    : undefined;
+}
+
+function normalizeEarningRules(rawRules: unknown): KnowledgeCardEarningRule[] {
+  if (!Array.isArray(rawRules)) return [];
+
+  return rawRules
+    .map((raw: any): KnowledgeCardEarningRule | null => {
+      const rate = Number(raw?.rate);
+      if (
+        typeof raw?.id !== "string" ||
+        typeof raw?.category !== "string" ||
+        !Number.isFinite(rate) ||
+        !["points", "miles", "percent"].includes(raw?.unit)
+      ) {
+        return null;
+      }
+
+      const capAmount = Number(raw?.cap?.amount);
+      return {
+        id: raw.id,
+        category: raw.category,
+        rate,
+        unit: raw.unit,
+        subcategories: stringList(raw.subcategories),
+        channels: stringList(raw.channels),
+        merchants: stringList(raw.merchants),
+        merchantExamples: stringList(raw.merchantExamples),
+        geography: typeof raw.geography === "string" ? raw.geography : undefined,
+        exclusions: stringList(raw.exclusions),
+        requiresActivation: raw.requiresActivation === true,
+        validFrom: typeof raw.validFrom === "string" ? raw.validFrom : undefined,
+        validThrough: typeof raw.validThrough === "string" ? raw.validThrough : undefined,
+        afterCapRate: Number.isFinite(Number(raw.afterCapRate))
+          ? Number(raw.afterCapRate)
+          : undefined,
+        selector: typeof raw.selector === "string" ? raw.selector : undefined,
+        eligibleCategories: stringList(raw.eligibleCategories),
+        details: typeof raw.details === "string" ? raw.details : undefined,
+        cap:
+          Number.isFinite(capAmount) && typeof raw?.cap?.period === "string"
+            ? {
+                amount: capAmount,
+                period: raw.cap.period,
+                sharedGroup:
+                  typeof raw.cap.sharedGroup === "string"
+                    ? raw.cap.sharedGroup
+                    : undefined,
+              }
+            : undefined,
+      };
+    })
+    .filter((rule): rule is KnowledgeCardEarningRule => Boolean(rule));
+}
+
 // Cards are global knowledge-layer docs, not user-owned card instances.
 export async function getAllCards(): Promise<KnowledgeCard[]> {
   try {
@@ -58,10 +147,21 @@ export async function getAllCards(): Promise<KnowledgeCard[]> {
       issuer: data.issuer || "Unknown Issuer",
       network: data.network || "Unknown Network",
       rewardRules: normalizeRewardRules(data.rewardRules),
+      earningRules: normalizeEarningRules(data.earningRules),
       annualFee:
         data.annualFee === undefined || data.annualFee === null
           ? null
           : Number(data.annualFee),
+      rewardCurrency:
+        typeof data.rewardCurrency?.name === "string"
+          ? {
+              type: data.rewardCurrency.type || "rewards",
+              name: data.rewardCurrency.name,
+            }
+          : undefined,
+      requirements: stringList(data.requirements),
+      notes: stringList(data.notes),
+      reviewedAt: typeof data.reviewedAt === "string" ? data.reviewedAt : undefined,
     }));
     const existingIds = new Set(normalizedCards.map((card) => card.id));
 

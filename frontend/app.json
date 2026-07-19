@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "tapTag",
+    "name": "TapTag",
     "slug": "tapTag",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "taptag",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
@@ -14,12 +14,12 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "TapTag uses the camera to scan card text on-device and keep only the network and last 4 digits.",
-        "NSLocationWhenInUseUsageDescription": "TapTag uses your location to detect when you arrive at a merchant and recommend the best card."
+        "NSLocationWhenInUseUsageDescription": "TapTag uses your location when you open Nearby to find merchants around you and recommend the best card."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#070A12",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -45,14 +45,15 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#070A12",
           "dark": {
-            "backgroundColor": "#000000"
+            "backgroundColor": "#070A12"
           }
         }
       ],
       "expo-web-browser",
-      "expo-font"
+      "expo-font",
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true,
